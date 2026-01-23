@@ -35,7 +35,9 @@ set(PROTO_SRC
     uDataPacketImportAPI/v1/frontend.proto)
 
 add_executable(uSEEDLinkToDataPacketImportProxy
-               src/main.cpp ${PROTO_SRC})
+               src/main.cpp
+               src/grpcOptions.cpp
+               ${PROTO_SRC})
 set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
