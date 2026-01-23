@@ -1,0 +1,15 @@
+edition = "2023";
+
+package UDataPacketImportAPI.V1;
+
+/*!
+ * Summarizes the publishers publishing statistics.  This concludes a publish
+ * event.
+ */
+message PublishResponse {
+    /// The total number of packets submitted to the frontend.
+    uint64 total_packets = 1;
+    /// The number of packets rejected.  Note, the number of accepted packets
+    /// is total_packets - packets_rejected.
+    uint64 packets_rejected = 2;
+};

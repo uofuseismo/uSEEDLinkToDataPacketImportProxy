@@ -1,0 +1,16 @@
+edition = "2023";
+
+package UDataPacketImportAPI.V1;
+
+import "google/protobuf/empty.proto";
+import "uDataPacketImportAPI/v1/packet.proto";
+
+/*!
+ * Consumers receive packets from the (proxy) backend.
+ */
+service Backend {
+    /*! 
+     * The consumer will receives data from all streams.
+     */
+    rpc Subscribe(google.protobuf.Empty) returns(stream Packet) {}; 
+}

@@ -1,0 +1,19 @@
+edition = "2023";
+
+package UDataPacketImportAPI.V1;
+
+//option features.utf8_validation = NONE;
+//option features.enforce_naming_style = STYLE_LEGACY;
+//option features.default_symbol_visibility = EXPORT_ALL;
+//option features.(pb.cpp).string_type = STRING;
+
+/*!
+ * A data stream identification which is comprised of a network code,
+ * station name, channel code, and location code.
+ */
+message StreamIdentifier {
+    string network = 1; /// The network code - e.g., UU.
+    string station = 2; /// The station code - e.g., FORK.
+    string channel = 3; /// The channel code - e.g., HHZ.
+    string location_code = 4 [default = "--"]; /// The location code - e.g., 01
+}

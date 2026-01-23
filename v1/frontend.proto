@@ -1,0 +1,17 @@
+edition = "2023";
+
+package UDataPacketImportAPI.V1;
+
+import "uDataPacketImportAPI/v1/packet.proto";
+import "uDataPacketImportAPI/v1/publish_response.proto";
+
+/*!
+ * Data importers send their packets to the (proxy) frontend.
+ */
+service Frontend {
+    /*! 
+     * The producer sends its packets to this end point.
+     * When finished returns of summary of packets sent.
+     */
+    rpc Publish(stream Packet) returns(PublishResponse) {}; 
+}
