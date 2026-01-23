@@ -1,6 +1,6 @@
 # About
 
-This utility forwards packets from SEEDLink to the UUSS K8s import proxy service [uDataImportProxy](https://github.com/uofuseismo/uDataPacketImportProxy)
+This utility forwards packets from SEEDLink to the UUSS K8s import proxy service [uDataImportProxy](https://github.com/uofuseismo/uDataPacketImportProxy).
 
 # Proto Files
 To obtain the proto files prior to compiling this software do the following:
