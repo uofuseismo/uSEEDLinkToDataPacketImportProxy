@@ -1,0 +1,28 @@
+edition = "2023";
+import "google/protobuf/timestamp.proto";
+
+package UDataPacketImportAPI.V1;
+
+//option features.utf8_validation = NONE;
+//option features.enforce_naming_style = STYLE2024;
+//option features.default_symbol_visibility = EXPORT_ALL;
+//option features.(pb.cpp).string_type = STRING;
+
+import "uDataPacketImportAPI/v1/stream_identifier.proto";
+import "uDataPacketImportAPI/v1/data_type.proto";
+
+/*!
+ * Defines a data packet.  This amounts to a stream identifier, a start time,
+ * sampling rate, and data.  Note, the data is always stored in little endian.
+ */
+message Packet {
+    /*! 
+     * Defines the underlying data type when interpreting data.
+     */
+    StreamIdentifier stream_identifier = 1; /// The packet identifier.
+    google.protobuf.Timestamp start_time = 2; /// The packet's start time (UTC) in microseconds since the epoch.
+    double sampling_rate = 3; /// The sampling rate in Hz.
+    DataType data_type = 4; /// The data type.
+    uint32 number_of_samples = 5; /// The number of samples.
+    bytes data = 6; /// The data.  This is always stored in little endian.
+}

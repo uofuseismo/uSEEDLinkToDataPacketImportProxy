@@ -1,0 +1,19 @@
+edition = "2023";
+
+package UDataPacketImportAPI.V1;
+
+//option features.utf8_validation = NONE;
+//option features.enforce_naming_style = STYLE_LEGACY;
+//option features.default_symbol_visibility = EXPORT_ALL;
+
+/*!
+ * Defines the underlying data type when interpreting data.
+ */
+enum DataType {
+    DATA_TYPE_UNKNOWN = 0;     /*! The data type is unkonwn. */
+    DATA_TYPE_INTEGER_32 = 1;  /*! The data type is interpreted as 32-bit integers. */
+    DATA_TYPE_FLOAT = 2;       /*! The data type is interpreted as 32-bit float values. */
+    DATA_TYPE_DOUBLE = 3;      /*! The data type is inteprreted as 64-bit float values. */
+    DATA_TYPE_TEXT = 4;        /*! The data type is intereprted as text data - this is unusual. */
+    DATA_TYPE_INTEGER_64 = 5;  /*! The data type is inteprreted as 64-bit integers. */
+}
