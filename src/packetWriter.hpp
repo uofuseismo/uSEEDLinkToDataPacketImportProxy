@@ -1,6 +1,8 @@
 #ifndef PACKET_WRITER_HPP
 #define PACKET_WRITER_HPP
+#include <sstream>
 #include <mutex>
+#include <queue>
 #include <condition_variable>
 #include <chrono>
 #include <grpcpp/grpcpp.h>
@@ -51,9 +53,9 @@ std::shared_ptr<grpc::Channel>
 #ifndef NDEBUG
             assert(!apiKey->empty());
 #endif
-            SPDLOG_LOGGER_DEBUG(logger,
-                                "Creating secure channel with API key to {}",
-                                address);
+            SPDLOG_LOGGER_INFO(logger,
+                               "Creating secure channel with API key to {}",
+                               address);
             auto callCredentials = grpc::MetadataCredentialsFromPlugin(
                 std::unique_ptr<grpc::MetadataCredentialsPlugin> (
                     new ::CustomAuthenticator(*apiKey)));
@@ -65,16 +67,16 @@ std::shared_ptr<grpc::Channel>
                       callCredentials);
             return grpc::CreateChannel(address, channelCredentials);
         }
-        SPDLOG_LOGGER_DEBUG(logger,
-                            "Creating secure channel without API key to ",
-                            address);
+        SPDLOG_LOGGER_INFO(logger,
+                           "Creating secure channel without API key to ",
+                           address);
         grpc::SslCredentialsOptions sslOptions;
         sslOptions.pem_root_certs = *serverCertificate;
         return grpc::CreateChannel(address,
                                    grpc::SslCredentials(sslOptions));
      }
-     SPDLOG_LOGGER_DEBUG(logger,
-                         "Creating non-secure channel to {}", address);
+     SPDLOG_LOGGER_INFO(logger,
+                        "Creating non-secure channel to {}", address);
      return grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
 }
 
@@ -91,22 +93,54 @@ public:
         mLogger(logger),
         mKeepRunning(keepRunning)
     {
+std::cout << "in" << std::endl;
 #ifndef NDEBUG
         assert(mPacketQueue != nullptr);
         assert(mLogger != nullptr);
         assert(mKeepRunning != nullptr);
 #endif
+        mContext.set_wait_for_ready(true);
         stub->async()->Publish(&mContext, &mResponse, this);
-        AddHold();
+std::cout << "okay" << std::endl;
+        //AddHold();
         nextWrite();
         StartCall();
+std::cout << "Done" << std::endl;
     }
     void OnWriteDone(bool ok) override
     {
-        if (mKeepRunning->load()){nextWrite();}
+        if (!ok) 
+        {
+/*
+            if (mContext)
+            {
+                if (mContext->IsCancelled())
+                {
+                    return Finish(grpc::Status::CANCELLED);
+                }
+            }
+            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                       "Unexpected failure"));
+*/
+        }
+        //if (mKeepRunning->load()){nextWrite();}
+        // Packet is flushed; can now safely write another packet
+        mWriteInProgress = false;
+        // Start next write
+        if (mKeepRunning->load())
+        {
+            nextWrite();
+        }
+        else
+        {
+            StartWritesDone(); 
+        }
     }
     void OnDone(const grpc::Status &status) override
     {
+#ifndef NDEBUG
+        assert(mLogger != nullptr);
+#endif
         SPDLOG_LOGGER_INFO(mLogger, "Writer finished");
         std::unique_lock<std::mutex> lock(mMutex);
         mStatus = status;
@@ -118,6 +152,7 @@ public:
     {
 #ifndef NDEBUG
         assert(mKeepRunning != nullptr);
+        assert(response != nullptr);
 #endif
         while (mKeepRunning->load())
         {
@@ -128,17 +163,12 @@ public:
                                         {
                                             return mDone;
                                         });
-            if (mDone && response){*response = mResponse;} 
             lock.unlock();
+            if (mDone){*response = mResponse;}
         }
         return std::move(mStatus);
-/*
-        std::unique_lock<std::mutex> lock(mMutex);
-        mConditionVariable.wait(lock, [this] {return mDone;});
-        *response = mResponse; 
-        return std::move(mStatus);
-*/
     }
+private:
     void nextWrite()
     {
 #ifndef NDEBUG
@@ -146,33 +176,43 @@ public:
 #endif
         while (mKeepRunning->load())
         {
-            if (mPacketQueue->try_pop(mPacket))
+            // Get any remaining packets on the queue on the wire
+            if (!mWriteInProgress)
             {
-                StartWrite(&mPacket);
+                if (mPacketQueue->try_pop(mPacket))
+                {
+                    mWriteInProgress = true;
+                    StartWrite(&mPacket);
+                }
             }
-            else
+            std::this_thread::sleep_for(mTimeOut);
+            if (!mKeepRunning->load())
             {
-                std::this_thread::sleep_for(mTimeOut);
-                nextWrite();
+                StartWritesDone();
             }
         }
-        SPDLOG_LOGGER_INFO(mLogger, "Writer exiting queue loop");
+        std::stringstream ss;
+        ss << std::this_thread::get_id();
+        uint64_t id = std::stoull(ss.str());
+        SPDLOG_LOGGER_INFO(mLogger, "Writer thread {} exiting queue loop", id);
         StartWritesDone();
-        RemoveHold();
+        //RemoveHold();
     }
 //private:
+    grpc::ClientContext mContext;
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet>
         *mPacketQueue{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr}; 
     std::atomic<bool> *mKeepRunning{nullptr};
 
-    grpc::ClientContext mContext;
     std::mutex mMutex;
+    //std::queue<UDataPacketImportAPI::V1::Packet> mWritePacketsQueue;
     std::condition_variable mConditionVariable;
     grpc::Status mStatus;
     UDataPacketImportAPI::V1::Packet mPacket;
     UDataPacketImportAPI::V1::PublishResponse mResponse;
-    std::chrono::milliseconds mTimeOut{15};
+    std::chrono::milliseconds mTimeOut{10};
+    bool mWriteInProgress{false};
     bool mDone{false};
 };
 

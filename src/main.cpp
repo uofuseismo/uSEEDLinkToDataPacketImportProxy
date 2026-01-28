@@ -3,12 +3,23 @@
 #include <csignal>
 #include <atomic>
 #include <tbb/concurrent_queue.h>
+#include <absl/log/initialize.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+#include <opentelemetry/exporters/otlp/otlp_http_exporter_options.h>
+#include <opentelemetry/exporters/otlp/otlp_http_exporter_factory.h>
+#include <opentelemetry/exporters/otlp/otlp_http_log_record_exporter_factory.h>
+#include <opentelemetry/exporters/ostream/log_record_exporter_factory.h>
+#include <opentelemetry/logs/provider.h>
+#include <opentelemetry/sdk/logs/logger_provider_factory.h>
+#include <opentelemetry/sdk/logs/simple_log_record_processor_factory.h>
 #include "seedLinkClient.hpp"
 #include "seedLinkClientOptions.hpp"
+#include "streamSelector.hpp"
 #include "grpcOptions.hpp"
 #include "packetWriter.hpp"
 #include "otelSpdlogSink.hpp"
@@ -18,32 +29,59 @@
 
 namespace
 {
+
+std::shared_ptr<opentelemetry::sdk::logs::LoggerProvider> loggerProvider{nullptr};
+
 std::atomic<bool> mInterrupted{false};
+
+struct OpenTelemetryHTTPOptions
+{
+    std::string endpoint;
+    std::filesystem::path certificatePath;
+    std::string suffix{"/v1/logs"};
+};
 
 struct ProgramOptions
 {
     std::string applicationName{APPLICATION_NAME};
     std::string prometheusURL{"localhost:9200"};
-    USEEDLinkToDataPacketImportProxy::SEEDLinkClientOptions seedLinkOptions;
+    ::OpenTelemetryHTTPOptions otelHTTPOptions;
+    USEEDLinkToDataPacketImportProxy::SEEDLinkClientOptions
+        seedLinkClientOptions;
     USEEDLinkToDataPacketImportProxy::GRPCOptions grpcOptions;
     int maximumImportQueueSize{8192};
     int verbosity{3};
 };
 
-void setVerbosityForSPDLOG(int );
+void setVerbosityForSPDLOG(const int, std::shared_ptr<spdlog::logger> &);
 [[nodiscard]] std::pair<std::string, bool> parseCommandLineOptions(int, char *[]);
 [[nodiscard]] ProgramOptions parseIniFile(const std::filesystem::path &);
+
+void cleanupLogger()
+{
+    if (loggerProvider)
+    {
+        loggerProvider->ForceFlush();
+        loggerProvider.reset();
+        std::shared_ptr<opentelemetry::logs::LoggerProvider> none;
+        opentelemetry::logs::Provider::SetLoggerProvider(none);
+    }
+}
 
 class Process
 {
 public:
 
-    Process(const ::ProgramOptions &options) :
-        mOptions(options)
+    Process(const ::ProgramOptions &options,
+            std::shared_ptr<spdlog::logger> &logger) :
+        mOptions(options),
+        mLogger(logger)
     {
         mSEEDLinkClient 
             = std::make_unique<USEEDLinkToDataPacketImportProxy::SEEDLinkClient>
-              (mAddPacketCallbackFunction, mOptions.seedLinkOptions);
+              (mAddPacketCallbackFunction,
+               mOptions.seedLinkClientOptions,
+               mLogger);
 
         mMaximumImportQueueSize = mOptions.maximumImportQueueSize;
         mImportQueue.set_capacity(mMaximumImportQueueSize);
@@ -58,7 +96,9 @@ public:
     {
         //stop();
         mKeepRunning.store(true);
-        mFutures.push_back(mSEEDLinkClient->start());
+        mFutures.push_back(std::async(&Process::sendPacketsToProxy, this));
+//        mFutures.push_back(mSEEDLinkClient->start());
+        handleMainThread();
     }
 
     void stop()
@@ -88,15 +128,56 @@ public:
             }
             catch (const std::exception &e)
             {
-                spdlog::critical("Fatal error in SEEDLink import: "
-                               + std::string {e.what()});
+                SPDLOG_LOGGER_CRITICAL(mLogger,
+                                       "Fatal error detected from thread: {}",
+                                       std::string {e.what()});
                 isOkay = false;
             }
         }
         return isOkay;
     }
 
+    /// Export packets
+    void sendPacketsToProxy()
+    {
+#ifndef NDEBUG
+        assert(mLogger != nullptr);
+#endif
+        //mPublisherChannel
+        //    = ::createChannel(mOptions.grpcOptions, mLogger);
+        auto publisherChannel = grpc::CreateChannel("localhost:50554",  grpc::InsecureChannelCredentials());
+        auto publisherStub
+            = UDataPacketImportAPI::V1::Frontend::NewStub(publisherChannel);
+std::cout << "starting" << std::endl;
+        AsynchronousWriter writer(
+            publisherStub.get(),
+            &mImportQueue,
+            mLogger,
+            &mKeepRunning);
+        UDataPacketImportAPI::V1::PublishResponse publishResponse;
+std::cout << "waiting" << std::endl;
+        auto status = writer.await(&publishResponse); 
+std::cout << "Done" << std::endl;
+        if (status.ok())
+        {
+            SPDLOG_LOGGER_INFO(mLogger, "Finished RPC");
+        }
+        else
+        {
+            int errorCode = status.error_code();
+            std::string errorMessage{status.error_message()};
+            SPDLOG_LOGGER_ERROR(mLogger,
+                                "Publisher failed with code {} ({})",
+                                errorCode, errorMessage);
+        }
+/*
+std::this_thread::sleep_for(std::chrono::seconds {10});
+SPDLOG_LOGGER_INFO(mLogger, "done");
+throw std::runtime_error("wigging out");
+*/
+    } 
 
+    /// Used by data client to add packets
     void addPacketCallback(UDataPacketImportAPI::V1::Packet &&packet)
     {
         try
@@ -109,7 +190,8 @@ public:
                     UDataPacketImportAPI::V1::Packet workSpace;
                     if (!mImportQueue.try_pop(workSpace))
                     {
-                        spdlog::warn("Failed to pop front of queue");
+                        SPDLOG_LOGGER_WARN(mLogger, 
+                            "Failed to pop front of queue while adding packet");
                         break;
                     }
                 }
@@ -117,13 +199,55 @@ public:
             // Check the packet
             if (!mImportQueue.try_push(packet))
             {
-                spdlog::warn("Failed to add packet");
+                SPDLOG_LOGGER_WARN(mLogger,
+                    "Failed to add packet to import queue");
             }
         }
         catch (const std::exception &e)
         {
-            spdlog::warn("Failed to add packet because "
-                       + std::string {e.what()});
+            SPDLOG_LOGGER_WARN(mLogger, "Failed to add packet because {}",
+                               std::string {e.what()});
+        }
+    }
+
+    // Calling thread from Run gets stuck here then fails through to
+    // destructor
+    void handleMainThread()
+    {
+        SPDLOG_LOGGER_DEBUG(mLogger, "Main thread entering waiting loop");
+        catchSignals();
+        {
+            while (!mStopRequested)
+            {
+                if (mInterrupted)
+                {
+                    SPDLOG_LOGGER_INFO(mLogger,
+                                       "SIGINT/SIGTERM signal received!");
+                    mStopRequested = true;
+                    break;
+                }
+                if (!checkFuturesOkay(std::chrono::milliseconds {5}))
+                {
+                    SPDLOG_LOGGER_CRITICAL(
+                       mLogger,
+                       "Futures exception caught; terminating app");
+                    mStopRequested = true;
+                    break;
+                }
+                std::unique_lock<std::mutex> lock(mStopMutex);
+                mStopCondition.wait_for(lock,
+                                        std::chrono::milliseconds {100},
+                                        [this]
+                                        {
+                                              return mStopRequested;
+                                        });
+                lock.unlock();
+            }
+        }
+        if (mStopRequested)
+        {
+            SPDLOG_LOGGER_DEBUG(mLogger, "Stop request received.  Exiting...");
+            stop();
         }
     }
 
@@ -145,6 +269,7 @@ public:
 
 //private:
     ::ProgramOptions mOptions;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mImportQueue;
     std::unique_ptr<USEEDLinkToDataPacketImportProxy::SEEDLinkClient>
         mSEEDLinkClient{nullptr};
@@ -154,9 +279,15 @@ public:
         std::bind(&::Process::addPacketCallback, this,
                   std::placeholders::_1)
     };
+    //std::shared_ptr<grpc::Channel> mPublisherChannel{nullptr};
+    std::unique_ptr<UDataPacketImportAPI::V1::Frontend::Stub>
+        mPublisherStub{nullptr};
     std::vector<std::future<void>> mFutures;
     size_t mMaximumImportQueueSize{8192};
+    mutable std::mutex mStopMutex;
+    std::condition_variable mStopCondition;
     std::atomic<bool> mKeepRunning{true};
+    bool mStopRequested{false};
 };
 
 }
@@ -172,8 +303,11 @@ int main(int argc, char *argv[])
         iniFile = iniFileName;
     }   
     catch (const std::exception &e) 
-    {   
-        spdlog::critical(e.what());
+    {
+        auto consoleLogger = spdlog::stdout_color_st("console");
+        SPDLOG_LOGGER_CRITICAL(consoleLogger,
+                               "Failed getting command line options because {}",
+                               std::string {e.what()});
         return EXIT_FAILURE;
     }   
 
@@ -184,10 +318,74 @@ int main(int argc, char *argv[])
     }
     catch (const std::exception &e)
     {
-        spdlog::error(e.what());
+        auto consoleLogger = spdlog::stdout_color_st("console");
+        SPDLOG_LOGGER_CRITICAL(consoleLogger,
+                               "Failed parsing ini file because {}",
+                               std::string {e.what()});
         return EXIT_FAILURE;
     }
-    ::setVerbosityForSPDLOG(programOptions.verbosity);
+
+    // Create logger
+    std::shared_ptr<spdlog::logger> logger{nullptr};
+    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt> (); 
+    if (!programOptions.otelHTTPOptions.endpoint.empty())
+    { 
+/*
+        constexpr int overwrite{1};
+        setenv("OTEL_SERVICE_NAME",
+               programOptions.applicationName.c_str(),
+               overwrite);
+        namespace otel = opentelemetry;
+        otel::exporter::otlp::OtlpHttpLogRecordExporterOptions httpOptions;
+        httpOptions.url = programOptions.otelHTTPOptions.endpoint
+                        + programOptions.otelHTTPOptions.suffix;
+        //httpOptions.use_ssl_credentials = false;
+        //httpOptions.ssl_credentials_cacert_path = programOptions.otelGRPCOptions.certificatePath;
+        using providerPtr
+            = otel::nostd::shared_ptr<opentelemetry::logs::LoggerProvider>;
+        //auto exporter
+        //    = otel::exporter::logs::OStreamLogRecordExporterFactory::Create();
+        auto exporter
+              = otel::exporter::otlp::OtlpHttpLogRecordExporterFactory::Create(httpOptions);
+        auto processor
+            = otel::sdk::logs::SimpleLogRecordProcessorFactory::Create(
+                 std::move(exporter));
+        loggerProvider
+            = otel::sdk::logs::LoggerProviderFactory::Create(
+                std::move(processor));
+        std::shared_ptr<opentelemetry::logs::LoggerProvider> apiProvider = loggerProvider;
+        otel::logs::Provider::SetLoggerProvider(apiProvider);
+
+        auto otelLogger
+            = std::make_shared<spdlog::sinks::opentelemetry_sink_mt> ();
+        logger
+            = std::make_shared<spdlog::logger>
+              (spdlog::logger ("OTelLogger", {otelLogger, consoleSink}));
+*/
+    }
+    else
+    {
+        logger
+            = std::make_shared<spdlog::logger>
+              (spdlog::logger ("", {consoleSink}));
+    }
+    ::setVerbosityForSPDLOG(programOptions.verbosity, logger);
+    //::setVerbosityForSPDLOG(programOptions.verbosity, otelLogger);
+
+absl::InitializeLog();
+    try
+    {
+        ::Process process(programOptions, logger);
+        process.start();
+//        cleanupLogger();
+    }
+    catch (const std::exception &e)
+    {
+        SPDLOG_LOGGER_CRITICAL(logger, "Main process failed wtih {}",
+                               std::string {e.what()});
+//        cleanupLogger();
+        return EXIT_FAILURE;
+    }
 
     return EXIT_SUCCESS;
 }
@@ -198,15 +396,16 @@ int main(int argc, char *argv[])
 namespace
 {   
         
-void setVerbosityForSPDLOG(const int verbosity)
+void setVerbosityForSPDLOG(const int verbosity,
+                           std::shared_ptr<spdlog::logger> &logger)
 {
     if (verbosity <= 1)
     {   
-        spdlog::set_level(spdlog::level::critical);
-    }
-    if (verbosity == 2){spdlog::set_level(spdlog::level::warn);}
-    if (verbosity == 3){spdlog::set_level(spdlog::level::info);}
-    if (verbosity >= 4){spdlog::set_level(spdlog::level::debug);}
+        logger->set_level(spdlog::level::critical);
+    }   
+    if (verbosity == 2){logger->set_level(spdlog::level::warn);}
+    if (verbosity == 3){logger->set_level(spdlog::level::info);}
+    if (verbosity >= 4){logger->set_level(spdlog::level::debug);}
 }
 
 /// Read the program options from the command line
@@ -249,6 +448,133 @@ Allowed options)""");
         throw std::runtime_error("Initialization file not specified");
     }
     return {iniFile, false};
+}
+
+
+USEEDLinkToDataPacketImportProxy::SEEDLinkClientOptions
+getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
+                   const std::string &clientName)
+{
+    using namespace USEEDLinkToDataPacketImportProxy;
+    SEEDLinkClientOptions clientOptions;
+    auto host = propertyTree.get<std::string> (clientName + ".host");
+    auto port = propertyTree.get<uint16_t> (clientName + ".port", 18000);
+    clientOptions.setHost(host);
+    clientOptions.setPort(port);
+    auto stateFile
+        = propertyTree.get<std::string> (clientName + ".stateFile", "");
+    if (!stateFile.empty())
+    {
+        std::filesystem::path stateFilePath{stateFile};
+        if (stateFilePath.has_parent_path())
+        {
+            auto parentPath = stateFilePath.parent_path();
+            if (!std::filesystem::exists(parentPath))
+            {
+                if (!std::filesystem::create_directories(parentPath))
+                {
+                    spdlog::warn("Could not create parent path "
+                               + parentPath.string());
+                }
+            }
+        }
+        auto deleteStateFileOnStart = clientOptions.deleteStateFileOnStart();
+        deleteStateFileOnStart
+            = propertyTree.get<bool> (clientName + ".deleteStateFileOnStart",
+                                      deleteStateFileOnStart);
+        if (deleteStateFileOnStart)
+        {
+            clientOptions.enableDeleteStateFileOnStart();
+        }
+        else
+        {
+            clientOptions.disableDeleteStateFileOnStart();
+        }
+
+        auto deleteStateFileOnStop = clientOptions.deleteStateFileOnStop();
+        deleteStateFileOnStop
+            = propertyTree.get<bool> (clientName + ".deleteStateFileOnStop",
+                                      deleteStateFileOnStop);
+        if (deleteStateFileOnStop)
+        {
+            clientOptions.enableDeleteStateFileOnStop();
+        }
+        else
+        {
+            clientOptions.disableDeleteStateFileOnStop();
+        }   
+    }
+
+    for (int iSelector = 1; iSelector <= 32768; ++iSelector)
+    {
+        std::string selectorName{clientName
+                               + ".data_selector_"
+                               + std::to_string(iSelector)};
+        auto selectorString
+            = propertyTree.get_optional<std::string> (selectorName);
+        if (selectorString)
+        {
+            std::vector<std::string> splitSelectors;
+            boost::split(splitSelectors, *selectorString,
+                         boost::is_any_of(",|"));
+            // A selector string can look like:
+            // UU.FORK.HH?.01 | UU.CTU.EN?.01 | ....
+            for (const auto &thisSplitSelector : splitSelectors)
+            {
+                std::vector<std::string> thisSelector;
+                auto splitSelector = thisSplitSelector;
+                boost::algorithm::trim(splitSelector);
+
+                boost::split(thisSelector, splitSelector,
+                             boost::is_any_of(" \t"));
+                StreamSelector selector;
+                if (splitSelector.empty())
+                {
+                    throw std::invalid_argument("Empty selector");
+                }
+                // Require a network
+                boost::algorithm::trim(thisSelector.at(0));
+                selector.setNetwork(thisSelector.at(0));
+                // Add a station?
+                if (splitSelector.size() > 1)
+                {
+                    boost::algorithm::trim(thisSelector.at(1));
+                    selector.setStation(thisSelector.at(1));
+                }
+                // Add channel + location code + data type
+                std::string channel{"*"};
+                std::string locationCode{"??"};
+                if (splitSelector.size() > 2)
+                {
+                    boost::algorithm::trim(thisSelector.at(2));
+                    channel = thisSelector.at(2);
+                }
+                if (splitSelector.size() > 3)
+                {
+                    boost::algorithm::trim(thisSelector.at(3));
+                    locationCode = thisSelector.at(3);
+                }
+                // Data type
+                auto dataType = StreamSelector::Type::All;
+                if (splitSelector.size() > 4)
+                {
+                    boost::algorithm::trim(thisSelector.at(4));
+                    if (thisSelector.at(4) == "D")
+                    {
+                        dataType = StreamSelector::Type::Data;
+                    }
+                    else if (thisSelector.at(4) == "A")
+                    {
+                        dataType = StreamSelector::Type::All;
+                    }
+                    // TODO other data types
+                }
+                selector.setSelector(channel, locationCode, dataType);
+                clientOptions.addStreamSelector(selector);
+            } // Loop on selectors
+        }
+    }
+    return clientOptions;
 }
 
 [[nodiscard]] std::string
@@ -357,6 +683,25 @@ loadStringFromFile(const std::filesystem::path &path)
     options.verbosity
         = propertyTree.get<int> ("General.verbosity", options.verbosity);
 
+    // Otel
+    if (propertyTree.get_optional<std::string> ("OTelHTTPCollector.host"))
+    {
+        OpenTelemetryHTTPOptions otelHTTPOptions;
+        auto otelHTTPHost
+            = propertyTree.get<std::string>
+              ("OTelHTTPCollector.host", "localhost");
+        if (otelHTTPHost.empty())
+        {
+            throw std::invalid_argument("OTel HTTP host is empty");
+        }
+        auto otelHTTPPort
+            = propertyTree.get<uint16_t>
+              ("OTelHTTPCollector.port", 4318);
+        otelHTTPOptions.endpoint = otelHTTPHost + ":"
+                                 + std::to_string(otelHTTPPort);
+        options.otelHTTPOptions = otelHTTPOptions;
+    }
+
     // Prometheus
     uint16_t prometheusPort
         = propertyTree.get<uint16_t> ("Prometheus.port", 9200);
@@ -368,6 +713,12 @@ loadStringFromFile(const std::filesystem::path &path)
                               + std::to_string(prometheusPort);
     }
 
+    // SEEDLink
+    if (propertyTree.get_optional<std::string> ("SEEDLink.host"))
+    {
+        options.seedLinkClientOptions
+             = ::getSEEDLinkOptions(propertyTree, "SEEDLink");
+    }   
 
     options.grpcOptions = ::getGRPCOptions(propertyTree, "GRPC"); 
     return options;

@@ -69,7 +69,7 @@ std::string pack(const T *data, const int nSamples, const bool swapBytes)
     // Start time
     std::chrono::nanoseconds startTime
     {
-        static_cast<int64_t> (std::round(miniSEEDRecord.starttime))
+        static_cast<int64_t> (miniSEEDRecord.starttime)
     };
     *result.mutable_start_time() 
         = google::protobuf::util::TimeUtil::NanosecondsToTimestamp(

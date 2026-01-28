@@ -63,8 +63,8 @@ target_include_directories(uSEEDLinkToDataPacketImportProxy
 target_link_libraries(uSEEDLinkToDataPacketImportProxy
                       PRIVATE gRPC::grpc gRPC::grpc++ protobuf::libprotobuf
                               opentelemetry-cpp::prometheus_exporter
-                              opentelemetry-cpp::otlp_http_log_record_exporter
-                              opentelemetry-cpp::ostream_log_record_exporter
+                              #opentelemetry-cpp::otlp_http_log_record_exporter
+                              #opentelemetry-cpp::ostream_log_record_exporter
                               spdlog::spdlog_header_only
                               SEEDLink::SEEDLink
                               mseed::mseed
@@ -87,6 +87,7 @@ protobuf_generate(TARGET uSEEDLinkToDataPacketImportProxy
 ##########################################################################################
 
 add_executable(unitTests
+               testing/packetConverter.cpp
                testing/seedLink.cpp
                ${COMMON_SRC})
 set_target_properties(unitTests PROPERTIES
@@ -98,6 +99,7 @@ target_link_libraries(unitTests
                       gRPC::grpc++
                       gRPC::grpcpp_otel_plugin
                       SEEDLink::SEEDLink
+                      mseed::mseed
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
@@ -108,6 +110,16 @@ target_include_directories(unitTests
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
 add_test(NAME unitTests 
          COMMAND unitTests)
+protobuf_generate(TARGET unitTests
+                  LANGUAGE cpp
+                 )
+protobuf_generate(TARGET unitTests
+                  LANGUAGE grpc
+                  PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
+                  PLUGIN_OPTIONS generate_mock_code=true
+                  GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+                 )
+
 
 ##########################################################################################
 #                                      Installation                                      #
