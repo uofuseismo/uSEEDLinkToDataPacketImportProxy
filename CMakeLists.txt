@@ -3,6 +3,7 @@ project(uSEEDLinkToDataPacketImportProxy VERSION 0.0.1 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
+option(BUILD_WITH_OTEL_LOGGING "Build with OpenTelemetry logging" ON)
 
 configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
                ${CMAKE_SOURCE_DIR}/src/version.hpp)
@@ -44,7 +45,6 @@ set(COMMON_SRC
     src/otelSpdlogSink.cpp
     src/version.cpp
     ${PROTO_SRC})
-
 add_executable(uSEEDLinkToDataPacketImportProxy
                src/main.cpp
                src/seedLinkClient.cpp
@@ -53,6 +53,9 @@ set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
+if (${BUILD_WITH_OTEL_LOGGING})
+   add_compile_definitions(uSEEDLinkToDataPacketImportProxy PRIVATE USE_OTEL_LOGGING)
+endif()
 target_include_directories(uSEEDLinkToDataPacketImportProxy
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
@@ -60,6 +63,8 @@ target_include_directories(uSEEDLinkToDataPacketImportProxy
 target_link_libraries(uSEEDLinkToDataPacketImportProxy
                       PRIVATE gRPC::grpc gRPC::grpc++ protobuf::libprotobuf
                               opentelemetry-cpp::prometheus_exporter
+                              opentelemetry-cpp::otlp_http_log_record_exporter
+                              opentelemetry-cpp::ostream_log_record_exporter
                               spdlog::spdlog_header_only
                               SEEDLink::SEEDLink
                               mseed::mseed

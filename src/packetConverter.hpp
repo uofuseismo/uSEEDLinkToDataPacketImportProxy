@@ -187,14 +187,19 @@ std::string pack(const T *data, const int nSamples, const bool swapBytes)
 
 /// @brief Unpacks a miniSEED record.
 [[nodiscard]]
-std::vector<UDataPacketImportAPI::V1::Packet>
+std::pair<std::vector<UDataPacketImportAPI::V1::Packet>, int>
     miniSEEDToPackets(char *msRecord,
                       const int bufferSize,
                       const bool swapBytes)
 {
+    if (msRecord == nullptr)
+    {
+        throw std::invalid_argument("Input mseed paylaod is null");
+    }
     std::vector<UDataPacketImportAPI::V1::Packet> dataPackets;
     auto bufferLength = static_cast<uint64_t> (bufferSize);
     uint64_t offset{0};
+    int failedPackets{0};
     // Iterate through the consumed buffer
     while (bufferLength - offset > MINRECLEN)
     {   
@@ -216,8 +221,7 @@ std::vector<UDataPacketImportAPI::V1::Packet>
             }
             catch (const std::exception &e)
             {
-                spdlog::warn("Failed to convert packet because "
-                           + std::string {e.what()});
+                failedPackets = failedPackets + 1;
             }
             offset = offset + miniSEEDRecord->reclen;
             msr3_free(&miniSEEDRecord);
@@ -235,26 +239,18 @@ std::vector<UDataPacketImportAPI::V1::Packet>
                 + std::to_string(returnCode));
         }
     }
-    if (dataPackets.size() > 1)
-    {   
-        spdlog::warn("Multiple mseed packets received");
-    }   
-    else if (dataPackets.empty())
-    {   
-        spdlog::warn("No mseed packets unpacked");
-    }   
-    return dataPackets;
+    return std::pair{ std::move(dataPackets), failedPackets };
 }
 
 [[nodiscard]] 
-std::vector<UDataPacketImportAPI::V1::Packet>
+std::pair<std::vector<UDataPacketImportAPI::V1::Packet>, int>
     miniSEEDToPackets(char *msRecord, const int bufferSize)
 {
     const bool swapBytes
     {
         std::endian::native == std::endian::little ? false : true
     };
-    return ::miniSEEDToPackets(msRecord, bufferSize);
+    return ::miniSEEDToPackets(msRecord, bufferSize, swapBytes);
 }
 
 }

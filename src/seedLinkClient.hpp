@@ -4,6 +4,10 @@
 #include <functional>
 #include <filesystem>
 #include <future>
+namespace spdlog
+{
+ class logger;
+}
 namespace UDataPacketImportAPI::V1
 {
  class Packet;
@@ -30,7 +34,8 @@ public:
     /// @param[in] options  Options that influence the behavior of the SEEDLink
     ///                     client.
     SEEDLinkClient(const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &getPacketCallback,
-                   const SEEDLinkClientOptions &options);
+                   const SEEDLinkClientOptions &options,
+                   std::shared_ptr<spdlog::logger> &logger);
     
     /// @result True indicates the client is initialized.
     [[nodiscard]] bool isInitialized() const noexcept;
