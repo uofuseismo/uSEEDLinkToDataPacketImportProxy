@@ -61,7 +61,9 @@ target_include_directories(uSEEDLinkToDataPacketImportProxy
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )
 target_link_libraries(uSEEDLinkToDataPacketImportProxy
-                      PRIVATE gRPC::grpc gRPC::grpc++ protobuf::libprotobuf
+                      PRIVATE gRPC::grpc
+                              gRPC::grpc++
+                              protobuf::libprotobuf
                               opentelemetry-cpp::prometheus_exporter
                               #opentelemetry-cpp::otlp_http_log_record_exporter
                               #opentelemetry-cpp::ostream_log_record_exporter

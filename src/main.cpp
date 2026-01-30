@@ -95,9 +95,10 @@ public:
     void start()
     {
         //stop();
+        std::this_thread::sleep_for(std::chrono::milliseconds {10});
         mKeepRunning.store(true);
         mFutures.push_back(std::async(&Process::sendPacketsToProxy, this));
-//        mFutures.push_back(mSEEDLinkClient->start());
+        mFutures.push_back(mSEEDLinkClient->start());
         handleMainThread();
     }
 
@@ -143,38 +144,99 @@ public:
 #ifndef NDEBUG
         assert(mLogger != nullptr);
 #endif
-        //mPublisherChannel
-        //    = ::createChannel(mOptions.grpcOptions, mLogger);
-        auto publisherChannel = grpc::CreateChannel("localhost:50554",  grpc::InsecureChannelCredentials());
-        auto publisherStub
-            = UDataPacketImportAPI::V1::Frontend::NewStub(publisherChannel);
-std::cout << "starting" << std::endl;
-        AsynchronousWriter writer(
-            publisherStub.get(),
-            &mImportQueue,
-            mLogger,
-            &mKeepRunning);
-        UDataPacketImportAPI::V1::PublishResponse publishResponse;
-std::cout << "waiting" << std::endl;
-        auto status = writer.await(&publishResponse); 
-std::cout << "Done" << std::endl;
-        if (status.ok())
+        constexpr std::chrono::milliseconds timeOut{10};
+        std::vector<std::chrono::seconds> retrySchedule{
+           std::chrono::seconds {0},
+           std::chrono::seconds {1}, 
+           std::chrono::seconds {5},
+           std::chrono::seconds {15}};
+        for (int kRetry = 0;
+             kRetry < static_cast<int> (retrySchedule.size()); ++kRetry)
         {
-            SPDLOG_LOGGER_INFO(mLogger, "Finished RPC");
-        }
-        else
-        {
-            int errorCode = status.error_code();
-            std::string errorMessage{status.error_message()};
-            SPDLOG_LOGGER_ERROR(mLogger,
-                                "Publisher failed with code {} ({})",
-                                errorCode, errorMessage);
-        }
-/*
-std::this_thread::sleep_for(std::chrono::seconds {10});
-SPDLOG_LOGGER_INFO(mLogger, "done");
-throw std::runtime_error("wigging out");
-*/
+            std::unique_lock<std::mutex> lock(mShutdownMutex);
+            mShutdownCondition.wait_for(lock,
+                                        retrySchedule.at(kRetry),
+                                        [this]
+                                        {
+                                            return mShutdownRequested;
+                                        });
+            lock.unlock();
+            if (!mKeepRunning){break;}
+            bool isRetry = kRetry > 0 ? true : false;
+            auto channel = ::createChannel(mOptions.grpcOptions, mLogger, isRetry);
+            auto stub = UDataPacketImportAPI::V1::Frontend::NewStub(channel);
+            grpc::ClientContext context;
+            context.set_wait_for_ready(false);
+            UDataPacketImportAPI::V1::PublishResponse publishResponse;
+            std::unique_ptr
+            <
+                grpc::ClientWriter<UDataPacketImportAPI::V1::Packet>
+            > writer(stub->Publish(&context,  &publishResponse)); 
+#ifndef NDEBUG
+            assert(writer != nullptr);
+#endif
+            while (mKeepRunning.load())
+            {
+                UDataPacketImportAPI::V1::Packet packet;
+                if (mImportQueue.try_pop(packet))
+                {
+                    if (!writer->Write(packet))
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger, "Broken stream");
+                        break;
+                    }
+                    kRetry = 0;
+                }
+                else
+                {
+                    std::this_thread::sleep_for(timeOut);
+                }
+            }
+            if (!mKeepRunning.load())
+            {
+                writer->WritesDone();
+            }
+            auto status = writer->Finish();
+            if (status.ok())
+            {
+                if (!mKeepRunning.load())
+                {
+                    SPDLOG_LOGGER_INFO(mLogger, "RPC successfully finished");
+                    break;
+                }
+            }
+            else
+            {
+                int errorCode(status.error_code());
+                std::string errorMessage(status.error_message());
+                if (errorCode == grpc::StatusCode::UNAVAILABLE)
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "Server unavailable (message: {})",
+                                       errorMessage);
+                }
+                else if (errorCode == grpc::StatusCode::CANCELLED)
+                {
+                    if (mKeepRunning.load())
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                                           "Server-side cancele (message: {})",
+                                           errorMessage);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    SPDLOG_LOGGER_ERROR(mLogger,
+                             "Publish RPC failed with error code {} (what: {})",
+                             errorCode,  errorMessage);
+                }
+            }
+        } // Loop on retries
+        SPDLOG_LOGGER_INFO(mLogger, "Publisher thread exiting");
     } 
 
     /// Used by data client to add packets
@@ -224,6 +286,8 @@ throw std::runtime_error("wigging out");
                     SPDLOG_LOGGER_INFO(mLogger,
                                        "SIGINT/SIGTERM signal received!");
                     mStopRequested = true;
+                    mShutdownRequested = true;
+                    mShutdownCondition.notify_all();
                     break;
                 }
                 if (!checkFuturesOkay(std::chrono::milliseconds {5}))
@@ -232,6 +296,8 @@ throw std::runtime_error("wigging out");
                        mLogger,
                        "Futures exception caught; terminating app");
                     mStopRequested = true;
+                    mShutdownRequested = true;
+                    mShutdownCondition.notify_all();
                     break;
                 }
                 std::unique_lock<std::mutex> lock(mStopMutex);
@@ -280,14 +346,17 @@ throw std::runtime_error("wigging out");
                   std::placeholders::_1)
     };
     //std::shared_ptr<grpc::Channel> mPublisherChannel{nullptr};
-    std::unique_ptr<UDataPacketImportAPI::V1::Frontend::Stub>
-        mPublisherStub{nullptr};
+    //std::unique_ptr<UDataPacketImportAPI::V1::Frontend::Stub>
+    //    mPublisherStub{nullptr};
     std::vector<std::future<void>> mFutures;
     size_t mMaximumImportQueueSize{8192};
     mutable std::mutex mStopMutex;
+    mutable std::mutex mShutdownMutex;
     std::condition_variable mStopCondition;
+    std::condition_variable mShutdownCondition;
     std::atomic<bool> mKeepRunning{true};
     bool mStopRequested{false};
+    bool mShutdownRequested{false};
 };
 
 }
