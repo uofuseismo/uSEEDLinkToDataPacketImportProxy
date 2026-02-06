@@ -3,12 +3,16 @@
 #include <chrono>
 #include <bit>
 #include <libmseed.h>
-#include "packetConverter.hpp"
+//#include "packetConverter.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
+#include "uDataPacketImportAPI/v1/packet.pb.h"
+
+import PacketConverter;
 
 namespace
 {
@@ -78,7 +82,7 @@ std::string toMiniSEED(
     const bool useMiniSEED3 = true)
 {
     auto data = dataIn;
-    constexpr int maxRecordLength{512};
+    //constexpr int maxRecordLength{512};
     std::string outputBuffer;
     if (data.empty()){return outputBuffer;}
 
@@ -174,7 +178,8 @@ TEMPLATE_TEST_CASE("USEEDLinkToDataPacketImportProxy::PacketConverter",
                                     samplingRate,
                                     useMiniSEED3);
     auto [packets, nFailures]
-        = ::miniSEEDToPackets(mseedBuffer.data(), mseedBuffer.size());
+        = USEEDLinkToDataPacketImportProxy::PacketConverter::
+            miniSEEDToPackets(mseedBuffer.data(), mseedBuffer.size());
     REQUIRE(nFailures == 0);
     REQUIRE(packets.size() == 1);
     auto packet = packets.at(0);

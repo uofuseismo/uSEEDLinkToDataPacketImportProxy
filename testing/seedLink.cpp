@@ -1,5 +1,8 @@
 #include <string>
 #include <chrono>
+#ifndef NDEBUG
+#include <cassert>
+#endif
 #include "seedLinkClientOptions.hpp"
 #include "streamSelector.hpp"
 #include <catch2/catch_test_macros.hpp>
