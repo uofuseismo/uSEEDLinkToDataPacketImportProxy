@@ -11,11 +11,22 @@ jobs:
           name: "Configure code"
           command: |
             cmake -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DBUILD_FOR_DEBIAN=ON
+      - store_artifacts:
+          path: /tmp/artifacts
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - Dockerfile.deb
+            - uDataPacketImportProxy-*
   # End compile job
   deploy-job:
     docker:
       - image: cimg/base:2022.09
-
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker:
+          docker_layer_caching: true
     # End steps
   # End deploy job
 
