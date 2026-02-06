@@ -15,7 +15,7 @@ public:
     explicit SEEDLinkClientImpl(
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
         const SEEDLinkClientOptions &options,
-        std::shared_ptr<spdlog::logger> &logger) :
+        std::shared_ptr<spdlog::logger> logger) :
         mAddPacketCallback(callback),
         mOptions(options),
         mLogger(logger)
@@ -415,7 +415,7 @@ public:
 SEEDLinkClient::SEEDLinkClient(
     const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
     const SEEDLinkClientOptions &options,
-    std::shared_ptr<spdlog::logger> &logger) :
+    std::shared_ptr<spdlog::logger> logger) :
     pImpl(std::make_unique<SEEDLinkClientImpl> (callback, options, logger))
 {
     //pImpl->initialize(options);

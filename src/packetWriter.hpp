@@ -118,7 +118,7 @@ public:
     AsynchronousWriter(
         UDataPacketImportAPI::V1::Frontend::Stub *stub,
         tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> *packetQueue,
-        std::shared_ptr<spdlog::logger> &logger,
+        std::shared_ptr<spdlog::logger> logger,
         std::atomic<bool> *keepRunning) :
         mPacketQueue(packetQueue),
         mLogger(logger),

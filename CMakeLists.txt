@@ -40,49 +40,101 @@ set(PROTO_SRC
 
 set(COMMON_SRC
     src/grpcOptions.cpp
-    src/streamSelector.cpp
-    src/seedLinkClientOptions.cpp
+    #src/streamSelector.cpp
     src/otelSpdlogSink.cpp
     src/version.cpp
     ${PROTO_SRC})
-add_executable(uSEEDLinkToDataPacketImportProxy
-               src/main.cpp
-               src/seedLinkClient.cpp
-               ${COMMON_SRC})
-set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
+
+set(LIBRARY_SRC
+    src/seedLinkClientOptions.cpp
+    src/streamSelector.cpp
+    src/seedLinkClient.cpp
+    ${PROTO_SRC})
+
+set(MODULE_FILES
+    src/modules/packetConverter.cppm)
+
+if (${BUILD_SHARED_LIBS})
+   add_library(libuSEEDLinkToDataPacketImportProxy STATIC ${LIBRARY_SRC})
+else()
+   add_library(libuSEEDLinkToDataPacketImportProxy STATIC ${LIBRARY_SRC})
+endif()
+add_library(uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy ALIAS libuSEEDLinkToDataPacketImportProxy)
+set_target_properties(libuSEEDLinkToDataPacketImportProxy PROPERTIES
+                      OUTPUT_NAME uSEEDLinkToDataPacketImportProxy
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
-if (${BUILD_WITH_OTEL_LOGGING})
-   add_compile_definitions(uSEEDLinkToDataPacketImportProxy PRIVATE USE_OTEL_LOGGING)
-endif()
-target_include_directories(uSEEDLinkToDataPacketImportProxy
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+target_include_directories(libuSEEDLinkToDataPacketImportProxy
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/modules>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                           )
-target_link_libraries(uSEEDLinkToDataPacketImportProxy
+target_link_libraries(libuSEEDLinkToDataPacketImportProxy
+                      PUBLIC TBB::tbb
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
-                              opentelemetry-cpp::prometheus_exporter
-                              #opentelemetry-cpp::otlp_http_log_record_exporter
-                              #opentelemetry-cpp::ostream_log_record_exporter
+                              opentelemetry-cpp::otlp_http_log_record_exporter
+                              opentelemetry-cpp::otlp_http_metric_exporter
                               spdlog::spdlog_header_only
-                              SEEDLink::SEEDLink
-                              mseed::mseed
-                              TBB::tbb
                               Boost::headers
                               Boost::program_options
                               Threads::Threads)
-protobuf_generate(TARGET uSEEDLinkToDataPacketImportProxy
-                  LANGUAGE cpp 
+target_sources(libuSEEDLinkToDataPacketImportProxy
+               PUBLIC FILE_SET
+                      HEADERS
+                      BASE_DIRS
+                        src
+                      FILES
+                        ${HEADER_FILES}
+               PUBLIC FILE_SET
+                      CXX_MODULES
+                      BASE_DIRS
+                        src/modules
+                      FILES
+                        ${MODULE_FILES}
+               )
+protobuf_generate(TARGET libuSEEDLinkToDataPacketImportProxy
+                  LANGUAGE cpp
                  )
-protobuf_generate(TARGET uSEEDLinkToDataPacketImportProxy
+protobuf_generate(TARGET libuSEEDLinkToDataPacketImportProxy
                   LANGUAGE grpc
                   PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
                   PLUGIN_OPTIONS generate_mock_code=true
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
                  )
+
+
+#add_executable(uSEEDLinkToDataPacketImportProxy
+#               src/main.cpp
+#               src/seedLinkClient.cpp
+#               ${COMMON_SRC})
+#set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
+#                      CXX_STANDARD 20
+#                      CXX_STANDARD_REQUIRED YES
+#                      CXX_EXTENSIONS NO)
+#if (${BUILD_WITH_OTEL_LOGGING})
+#   add_compile_definitions(uSEEDLinkToDataPacketImportProxy PRIVATE USE_OTEL_LOGGING)
+#endif()
+#target_include_directories(uSEEDLinkToDataPacketImportProxy
+#                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+#                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+#                          )
+#target_link_libraries(uSEEDLinkToDataPacketImportProxy
+#                      PRIVATE gRPC::grpc
+#                              gRPC::grpc++
+#                              protobuf::libprotobuf
+#                              opentelemetry-cpp::prometheus_exporter
+#                              #opentelemetry-cpp::otlp_http_log_record_exporter
+#                              #opentelemetry-cpp::ostream_log_record_exporter
+#                              spdlog::spdlog_header_only
+#                              SEEDLink::SEEDLink
+#                              mseed::mseed
+#                              TBB::tbb
+#                              Boost::headers
+#                              Boost::program_options
+#                              Threads::Threads)
 
 ##########################################################################################
 #                                         Tests                                          #
@@ -91,15 +143,19 @@ protobuf_generate(TARGET uSEEDLinkToDataPacketImportProxy
 add_executable(unitTests
                testing/packetConverter.cpp
                testing/seedLink.cpp
-               ${COMMON_SRC})
+               )
+#               ${COMMON_SRC})
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_link_libraries(unitTests
+                      PUBLIC TBB::tbb
+                      PRIVATE  
+                      uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
                       gRPC::grpc
                       gRPC::grpc++
-                      gRPC::grpcpp_otel_plugin
+                      #gRPC::grpcpp_otel_plugin
                       SEEDLink::SEEDLink
                       mseed::mseed
                       Threads::Threads
@@ -112,16 +168,6 @@ target_include_directories(unitTests
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
 add_test(NAME unitTests 
          COMMAND unitTests)
-protobuf_generate(TARGET unitTests
-                  LANGUAGE cpp
-                 )
-protobuf_generate(TARGET unitTests
-                  LANGUAGE grpc
-                  PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
-                  PLUGIN_OPTIONS generate_mock_code=true
-                  GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-                 )
-
 
 ##########################################################################################
 #                                      Installation                                      #
@@ -142,9 +188,9 @@ include(GNUInstallDirs)
 #        FILE_SET HEADERS
 #        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 #        COMPONENT libraries)
-install(TARGETS uSEEDLinkToDataPacketImportProxy
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT applications)
+#install(TARGETS uSEEDLinkToDataPacketImportProxy
+#        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+#        COMPONENT applications)
 #export(EXPORT ${PROJECT_NAME}-targets
 #       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 #install(EXPORT ${PROJECT_NAME}-targets

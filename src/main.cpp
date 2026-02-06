@@ -73,7 +73,7 @@ class Process
 public:
 
     Process(const ::ProgramOptions &options,
-            std::shared_ptr<spdlog::logger> &logger) :
+            std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mLogger(logger)
     {

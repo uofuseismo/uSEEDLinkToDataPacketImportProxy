@@ -35,7 +35,7 @@ public:
     ///                     client.
     SEEDLinkClient(const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &getPacketCallback,
                    const SEEDLinkClientOptions &options,
-                   std::shared_ptr<spdlog::logger> &logger);
+                   std::shared_ptr<spdlog::logger> logger);
     
     /// @result True indicates the client is initialized.
     [[nodiscard]] bool isInitialized() const noexcept;

@@ -1,0 +1,34 @@
+version: 2.1 
+jobs:
+  compile-job:
+    docker:
+      - image: quay.io/uuss/us8base
+    #resource_class: medium
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: "Configure code"
+          command: |
+            cmake -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DBUILD_FOR_DEBIAN=ON
+  # End compile job
+  deploy-job:
+    docker:
+      - image: cimg/base:2022.09
+
+    # End steps
+  # End deploy job
+
+# Orchestrate jobs using workflows
+# See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
+workflows:
+  compile-workflow:
+    jobs:
+      - compile-job
+      - deploy-job:
+          requires:
+            - compile-job
+
+
+
+
