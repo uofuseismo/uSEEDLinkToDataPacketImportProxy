@@ -4,8 +4,12 @@
 #include "seedLinkClient.hpp"
 #include "seedLinkClientOptions.hpp"
 #include "streamSelector.hpp"
-#include "packetConverter.hpp"
+//#include "packetConverter.hpp"
 #include "version.hpp"
+#include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
+#include "uDataPacketImportAPI/v1/packet.pb.h"
+
+import PacketConverter;
 
 using namespace USEEDLinkToDataPacketImportProxy;
 
@@ -17,8 +21,8 @@ public:
         const SEEDLinkClientOptions &options,
         std::shared_ptr<spdlog::logger> logger) :
         mAddPacketCallback(callback),
-        mOptions(options),
-        mLogger(logger)
+        mLogger(logger),
+        mOptions(options)
     {
         if (mLogger == nullptr)
         {
@@ -292,8 +296,9 @@ public:
                     try
                     {
                         auto [packets, failedPackets]
-                            = ::miniSEEDToPackets(seedLinkBuffer.data(),
-                                                  payloadLength);
+                            = USEEDLinkToDataPacketImportProxy::PacketConverter
+                                ::miniSEEDToPackets(seedLinkBuffer.data(),
+                                                    payloadLength);
                         if (failedPackets > 0)
                         {
                             SPDLOG_LOGGER_WARN(mLogger,
@@ -393,10 +398,10 @@ public:
         mConnected = false;
     }
 //private:
-    std::string mClientName{"uSEEDLinkToDataPacketProxy"};
     std::function<void(UDataPacketImportAPI::V1::Packet &&)>
         mAddPacketCallback;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    std::string mClientName{"uSEEDLinkToDataPacketProxy"};
     SLCD *mSEEDLinkConnection{nullptr};
     SEEDLinkClientOptions mOptions;
     std::string mStateFile;

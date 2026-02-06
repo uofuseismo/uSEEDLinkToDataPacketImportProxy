@@ -1,10 +1,8 @@
-#include <iostream>
 #ifndef NDEBUG
 #include <cassert>
 #endif
-#include <string>
-#include <algorithm>
 #include "streamSelector.hpp"
+
 
 using namespace USEEDLinkToDataPacketImportProxy;
 
