@@ -122,7 +122,7 @@ void StreamSelector::setSelector(
 }
 
 /// Build the selector
-std::string StreamSelector::getSelector() const noexcept
+std::string StreamSelector::getSelector() const
 {
     std::string selector;
     std::string locationChannel;

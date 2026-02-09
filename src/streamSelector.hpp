@@ -80,7 +80,7 @@ public:
                      const std::string &locationCode,
                      const Type type = Type::Data);
     /// @result A string representation of the selector.
-    [[nodiscard]] std::string getSelector() const noexcept;
+    [[nodiscard]] std::string getSelector() const;
 
     /// @name Destructors
     /// @{

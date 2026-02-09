@@ -206,11 +206,14 @@ void SEEDLinkClientOptions::addStreamSelector(
     {
         throw std::invalid_argument("Network not set");
     }
+    auto network = selector.getNetwork();
+    auto station = selector.getStation();
+    auto dataSelector = selector.getSelector();
     for (const auto &mySelector : pImpl->mSelectors)
     {
-        if (mySelector.getNetwork() == selector.getNetwork() &&
-            mySelector.getStation() == selector.getStation() &&
-            mySelector.getSelector() == selector.getSelector())
+        if (network == mySelector.getNetwork() &&
+            station == mySelector.getStation() &&
+            dataSelector == mySelector.getSelector())
         {
             throw std::invalid_argument("Duplicate selector");
         }
