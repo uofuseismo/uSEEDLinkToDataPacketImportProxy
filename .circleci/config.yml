@@ -3,8 +3,8 @@ jobs:
   compile-job:
     docker:
       - image: quay.io/uuss/us8base
-    #resource_class: medium
-    resource_class: small
+    resource_class: medium
+    #resource_class: small
     steps:
       - checkout
       - run:
@@ -21,7 +21,7 @@ jobs:
           root: /tmp/workspace
           paths:
             - Dockerfile.deb
-            - uDataPacketImportProxy-*
+            - uSEEDLinkToDataPacketImportProxy-*
   # End compile job
   deploy-job:
     docker:

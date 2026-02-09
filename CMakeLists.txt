@@ -3,7 +3,6 @@ project(uSEEDLinkToDataPacketImportProxy VERSION 0.0.1 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
-option(BUILD_WITH_OTEL_LOGGING "Build with OpenTelemetry logging" ON)
 
 configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
                ${CMAKE_SOURCE_DIR}/src/version.hpp)
@@ -46,7 +45,13 @@ set(LIBRARY_SRC
     src/seedLinkClient.cpp
     src/version.cpp
     ${PROTO_SRC})
-
+set(HEADER_FILES
+    src/grpcOptions.hpp
+    src/seedLinkClient.hpp
+    src/seedLinkClientOptions.hpp
+    src/streamSelector.hpp
+    src/seedLinkClient.hpp
+    src/version.hpp)
 set(MODULE_FILES
     src/modules/logger.cppm
     src/modules/metrics.cppm
@@ -114,26 +119,26 @@ set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
-#if (${BUILD_WITH_OTEL_LOGGING})
-#   add_compile_definitions(uSEEDLinkToDataPacketImportProxy PRIVATE USE_OTEL_LOGGING)
-#endif()
 target_include_directories(uSEEDLinkToDataPacketImportProxy
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )
 target_link_libraries(uSEEDLinkToDataPacketImportProxy
-                      PRIVATE uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
-                              gRPC::grpc
-                              gRPC::grpc++
-                              opentelemetry-cpp::otlp_http_log_record_exporter
-                              opentelemetry-cpp::otlp_http_metric_exporter
-                              spdlog::spdlog_header_only
-                              SEEDLink::SEEDLink
-                              mseed::mseed
-                              TBB::tbb
-                              Boost::headers
-                              Boost::program_options
-                              Threads::Threads)
+                      PUBLIC
+                         TBB::tbb
+                      PRIVATE
+                         uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
+                         gRPC::grpc
+                         gRPC::grpc++
+                         opentelemetry-cpp::otlp_http_log_record_exporter
+                         opentelemetry-cpp::otlp_http_metric_exporter
+                         spdlog::spdlog_header_only
+                         SEEDLink::SEEDLink
+                         mseed::mseed
+                         Boost::headers
+                         Boost::program_options
+                         Threads::Threads)
 
 ##########################################################################################
 #                                         Tests                                          #
@@ -144,22 +149,22 @@ add_executable(unitTests
                testing/seedLink.cpp
                testing/grpc.cpp
                )
-#               ${COMMON_SRC})
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_link_libraries(unitTests
-                      PUBLIC TBB::tbb
+                      PUBLIC
+                         TBB::tbb
                       PRIVATE  
-                      uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
-                      gRPC::grpc
-                      gRPC::grpc++
-                      #gRPC::grpcpp_otel_plugin
-                      SEEDLink::SEEDLink
-                      mseed::mseed
-                      Threads::Threads
-                      Catch2::Catch2 Catch2::Catch2WithMain)
+                         uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
+                         gRPC::grpc
+                         gRPC::grpc++
+                         #gRPC::grpcpp_otel_plugin
+                         SEEDLink::SEEDLink
+                         mseed::mseed
+                         Threads::Threads
+                         Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
@@ -169,40 +174,60 @@ add_test(NAME unitTests
 ##########################################################################################
 #                                      Installation                                      #
 ##########################################################################################
-include(GNUInstallDirs)
-#include(CMakePackageConfigHelpers)
-#configure_package_config_file(
-#    cmake/${PROJECT_NAME}Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-#    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
-#write_basic_package_version_file(
-#    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-#    VERSION "${version}"
-#    COMPATIBILITY AnyNewerVersion
-#)
+include(CMakePackageConfigHelpers)
+configure_file(${PROJECT_SOURCE_DIR}/cmake/uSEEDLinkToDataPacketImportProxy.cmake.in
+               uSEEDLinkToDataPacketImportProxyConfig.cmake @ONLY)
+write_basic_package_version_file(
+   uSEEDLinkToDataPacketImportProxyConfigVersion.cmake
+   VERSION ${PACKAGE_VERSION}
+   COMPATIBILITY AnyNewerVersion)
 
-#install(TARGETS uDataPacketImport
-#        EXPORT ${PROJECT_NAME}-targets
-#        FILE_SET HEADERS
-#        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#        COMPONENT libraries)
-#install(TARGETS uSEEDLinkToDataPacketImportProxy
-#        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-#        COMPONENT applications)
-#export(EXPORT ${PROJECT_NAME}-targets
-#       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
-#install(EXPORT ${PROJECT_NAME}-targets
-#        NAMESPACE ${PROJECT_NAME}::
-#        FILE ${PROJECT_NAME}Targets.cmake
-#        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
-#install(FILES
-#        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
-#        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
-#        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+include(GNUInstallDirs)
+install(TARGETS libuSEEDLinkToDataPacketImportProxy
+        EXPORT ${PROJECT_NAME}Targets
+        FILE_SET HEADERS 
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILE_SET CXX_MODULES
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        COMPONENT libraries)
+install(TARGETS uSEEDLinkToDataPacketImportProxy
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT applications)
+export(EXPORT ${PROJECT_NAME}Targets
+       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/uSEEDLinkToDataPacketImportProxyConfig.cmake
+              ${CMAKE_CURRENT_BINARY_DIR}/uSEEDLinkToDataPacketImportProxyConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/uSEEDLinkToDataPacketImportProxy)
+
+##########################################################################################
+#                                        Containers                                      #
+##########################################################################################
+include(CPackComponent)
+if (${BUILD_FOR_DEBIAN})
+   message("Will configure debian container")
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.deb.in
+                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.deb @ONLY)
+   add_custom_target(${PROJECT_NAME}-deb
+                     COMMENT "Creating deb file for ${PROJECT_NAME}"
+                     COMMAND ${CMAKE_CPACK_COMMAND} -G DEB
+                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
+   add_dependencies(${PROJECT_NAME}-deb uSEEDLinkToDataPacketImportProxy libuSEEDLinkToDataPacketImportProxy)
+   find_program(buildah_EXECUTABLE buildah)
+   if (buildah_EXECUTABLE)
+      add_custom_target(buildah
+                        COMMENT "Preparing the container with buildah"
+                        COMMAND ${buildah_EXECUTABLE} bud -t useedlinktodatapacketimportproxy:${PROJECT_VERSION} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.deb
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
+      add_dependencies(buildah ${PROJECT_NAME}-deb)
+   endif()
+endif()
+
 
 ##########################################################################################
 #                                     CPACK Packaging                                    #
 ##########################################################################################
-include(CPackComponent)
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
 set(CPACK_PACKAGE_VENDOR "UUSS")
 set(CPACK_PACKAGE_CONTACT "ben.baker@utah.edu")
@@ -215,20 +240,14 @@ set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
-#if (${BUILD_SHARED_LIBS})
-#   cpack_add_component(libraries
-#                       DISPLAY_NAME "uDataPacketImport common libraries"
-#                       DEPENDS ${GRPC_LIBRARY} ${GRPC_GRPC++_LIBRARY} ${SEEDLink_LIBRARIES})
-#else()
-#   cpack_add_component(libraries
-#                       DISPLAY_NAME "uDataPacketImport common libraries")
-#endif()
-#cpack_add_component(headers
-#                    DISPLAY_NAME "uDataPacketImport library header files"
-#                    DEPENDS libraries)
+cpack_add_component(libraries
+                    DISPLAY_NAME "uSEEDLinkToDataPacketImportProxy common libraries")
+cpack_add_component(headers
+                    DISPLAY_NAME "uSEEDLinkToDataPacketImportProxy library header files"
+                    DEPENDS libraries)
 cpack_add_component(applications
-                    DISPLAY_NAME "uSEEDLinkToDataPacketImportProxy applications")
-#                    DEPENDS libraries)
+                    DISPLAY_NAME "uSEEDLinkToDataPacketImportProxy applications"
+                    DEPENDS libraries)
 set(CPACK_GENERATOR ZIP TGZ)
 if (WIN32)
    list(APPEND CPACK_GENERATOR WIX)
@@ -239,16 +258,16 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
    if (RPMBUILD_PROGRAM)
       list(APPEND CPACK_GENERATOR RPM)
    endif()
-   if (${BUILD_FOR_DEBIAN})
-      find_program(DPKG_PROGRAM dpkg REQUIRED)
-   else()
-      find_program(DPKG_PROGRAM dpkg)
-   endif()
-   if (DPKG_PROGRAM)
-      list(APPEND CPACK_GENERATOR DEB)
-      set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}")
-      set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON) 
-   endif()
+   #if (${BUILD_FOR_DEBIAN})
+   #   find_program(DPKG_PROGRAM dpkg REQUIRED)
+   #else()
+   #   find_program(DPKG_PROGRAM dpkg)
+   #endif()
+   #if (DPKG_PROGRAM)
+   #   list(APPEND CPACK_GENERATOR DEB)
+   #   set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}")
+   #   set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON) 
+   #endif()
 else()
    message("Unknown operating system")
 endif()
