@@ -12,25 +12,6 @@
 #include <uDataPacketImportAPI/v1/frontend.grpc.pb.h>
 #include "seedLinkClient.hpp"
 #include "seedLinkClientOptions.hpp"
-/*
-#include <boost/algorithm/string.hpp>
-#include <boost/program_options.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/ini_parser.hpp>
-#include <opentelemetry/exporters/otlp/otlp_http_exporter_options.h>
-#include <opentelemetry/exporters/otlp/otlp_http_exporter_factory.h>
-#include <opentelemetry/exporters/otlp/otlp_http_log_record_exporter_factory.h>
-#include <opentelemetry/exporters/ostream/log_record_exporter_factory.h>
-#include <opentelemetry/logs/provider.h>
-#include <opentelemetry/sdk/logs/logger_provider_factory.h>
-#include <opentelemetry/sdk/logs/simple_log_record_processor_factory.h>
-#include "seedLinkClient.hpp"
-#include "seedLinkClientOptions.hpp"
-#include "streamSelector.hpp"
-#include "grpcOptions.hpp"
-#include "otelSpdlogSink.hpp"
-#include "uDataPacketImportAPI/v1/packet.pb.h"
-*/
 
 import ProgramOptions;
 import PacketWriter;
@@ -124,15 +105,6 @@ public:
 #endif
         constexpr std::chrono::milliseconds timeOut{10};
         auto retrySchedule = mOptions.retrySchedule; 
-        std::sort(retrySchedule.begin(), retrySchedule.end());
-        if (retrySchedule.front() != std::chrono::seconds {0})
-        {
-            retrySchedule.insert(retrySchedule.begin(), std::chrono::seconds {0});
-#ifndef NDEBUG
-            assert(retrySchedule.size() == mOptions.retrySchedule.size());
-            assert(std::is_sorted(retrySchedule.begin(), retrySchedule.end()));
-#endif
-        }
         for (int kRetry = 0;
              kRetry < static_cast<int> (retrySchedule.size());
              ++kRetry)

@@ -316,6 +316,22 @@ loadStringFromFile(const std::filesystem::path &path)
     return options;
 }
 
+std::string getOTelCollectorURL(boost::property_tree::ptree &propertyTree,
+                                const std::string &section)
+{
+    std::string result; 
+    std::string otelCollectorHost
+        = propertyTree.get<std::string> (section + ".host", "");
+    uint16_t otelCollectorPort
+        = propertyTree.get<uint16_t> (section + ".port", 4218);
+    if (!otelCollectorHost.empty())
+    {
+        result = otelCollectorHost + ":"
+               + std::to_string(otelCollectorPort);
+    }    
+    return result; 
+}
+
 export
 ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
 {
@@ -335,26 +351,55 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
     options.verbosity
         = propertyTree.get<int> ("General.verbosity", options.verbosity);
 
-/*
-    // Otel
-    if (propertyTree.get_optional<std::string> ("OTelHTTPCollector.host"))
-    {
-        OpenTelemetryHTTPOptions otelHTTPOptions;
-        auto otelHTTPHost
-            = propertyTree.get<std::string>
-              ("OTelHTTPCollector.host", "localhost");
-        if (otelHTTPHost.empty())
+
+    // Metrics
+    OTelHTTPMetricsOptions metricsOptions;
+    metricsOptions.url
+         = getOTelCollectorURL(propertyTree, "OTelHTTPMetricsOptions");
+    metricsOptions.suffix
+         = propertyTree.get<std::string> ("OTelHTTPMetricsOptions.suffix",
+                                          "/v1/metrics");
+    if (!metricsOptions.url.empty())
+    {   
+        if (!metricsOptions.suffix.empty())
         {
-            throw std::invalid_argument("OTel HTTP host is empty");
+            if (!metricsOptions.url.ends_with("/") &&
+                !metricsOptions.suffix.starts_with("/"))
+            {
+                metricsOptions.suffix = "/" + metricsOptions.suffix;
+            }
+         }
+    }   
+    if (!metricsOptions.url.empty())
+    {   
+        options.exportMetrics = true;
+        options.otelHTTPMetricsOptions = metricsOptions;
+    } 
+
+    OTelHTTPLogOptions logOptions;
+    logOptions.url
+         = getOTelCollectorURL(propertyTree, "OTelHTTPLogOptions");
+    logOptions.suffix
+         = propertyTree.get<std::string>
+           ("OTelHTTPLogOptions.suffix", "/v1/logs");
+    if (!logOptions.url.empty())
+    {
+        if (!logOptions.suffix.empty())
+        {
+            if (!logOptions.url.ends_with("/") &&
+                !logOptions.suffix.starts_with("/"))
+            {
+                logOptions.suffix = "/" + logOptions.suffix;
+            }
         }
-        auto otelHTTPPort
-            = propertyTree.get<uint16_t>
-              ("OTelHTTPCollector.port", 4318);
-        otelHTTPOptions.endpoint = otelHTTPHost + ":"
-                                 + std::to_string(otelHTTPPort);
-        options.otelHTTPOptions = otelHTTPOptions;
     }
-*/
+    if (!logOptions.url.empty())
+    {
+        options.exportLogs = true;
+        options.otelHTTPLogOptions = logOptions;
+    }
+
+    options.grpcOptions = getGRPCOptions(propertyTree, "GRPC");
 
     // SEEDLink
     if (propertyTree.get_optional<std::string> ("SEEDLink.host"))
