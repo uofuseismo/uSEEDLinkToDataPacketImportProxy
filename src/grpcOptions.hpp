@@ -6,6 +6,10 @@
 #include <optional>
 namespace USEEDLinkToDataPacketImportProxy
 {
+/// @class GRPCOptions 
+/// @brief Defines the gRPC client publisher client options.
+/// @copyright Ben Baker (University of Utah) distributed under the
+///            MIT NO AI license.
 class GRPCOptions
 {
 public:
@@ -37,7 +41,6 @@ public:
     /// @result The server certificate.
     /// @note The server key must also be set for gRPC to use this.
     [[nodiscard]] std::optional<std::string> getServerCertificate() const noexcept;
-
 
     /// @brief Sets the client certificate for a full key exchange.
     void setClientCertificate(const std::string &certificate);

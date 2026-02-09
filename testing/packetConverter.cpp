@@ -3,7 +3,6 @@
 #include <chrono>
 #include <bit>
 #include <libmseed.h>
-//#include "packetConverter.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

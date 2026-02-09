@@ -4,7 +4,6 @@
 #include "seedLinkClient.hpp"
 #include "seedLinkClientOptions.hpp"
 #include "streamSelector.hpp"
-//#include "packetConverter.hpp"
 #include "version.hpp"
 #include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
@@ -124,7 +123,6 @@ public:
                                       + seedLinkAddress);
         }   
         // Set the record size and state file
-        //mSEEDRecordSize = options.getSEEDRecordSize();
         if (options.hasStateFile())
         {   
             mStateFile = options.getStateFile();
@@ -408,7 +406,6 @@ public:
     std::atomic<bool> mKeepRunning{true};
     std::atomic<bool> mConnected{false};
     int mStateFileUpdateInterval{100};
-    //int mSEEDRecordSize{512};
     bool mHaveOptions{false};
     bool mUseStateFile{false};
     bool mDeleteStateFileOnStop{false};

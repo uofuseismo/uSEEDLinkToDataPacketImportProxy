@@ -11,6 +11,10 @@ jobs:
           name: "Configure code"
           command: |
             cmake -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DBUILD_FOR_DEBIAN=ON
+      - run:
+          name: "Build the code"
+          command: |
+            cmake --build build
       - store_artifacts:
           path: /tmp/artifacts
       - persist_to_workspace:
