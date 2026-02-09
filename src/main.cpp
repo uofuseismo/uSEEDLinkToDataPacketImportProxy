@@ -1,11 +1,18 @@
 #include <iostream>
 #include <string>
 #include <csignal>
+#include <cstdlib>
 #include <atomic>
+#include <filesystem>
 #include <tbb/concurrent_queue.h>
 #include <absl/log/initialize.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <uDataPacketImportAPI/v1/packet.pb.h>
+#include <uDataPacketImportAPI/v1/frontend.grpc.pb.h>
+#include "seedLinkClient.hpp"
+#include "seedLinkClientOptions.hpp"
+/*
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -21,68 +28,39 @@
 #include "seedLinkClientOptions.hpp"
 #include "streamSelector.hpp"
 #include "grpcOptions.hpp"
-#include "packetWriter.hpp"
 #include "otelSpdlogSink.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+*/
 
-#define APPLICATION_NAME "uSEEDLinkToDataPacketImportProxy"
+import ProgramOptions;
+import PacketWriter;
+import Logger;
+import Metrics;
 
 namespace
 {
 
-std::shared_ptr<opentelemetry::sdk::logs::LoggerProvider> loggerProvider{nullptr};
-
 std::atomic<bool> mInterrupted{false};
-
-struct OpenTelemetryHTTPOptions
-{
-    std::string endpoint;
-    std::filesystem::path certificatePath;
-    std::string suffix{"/v1/logs"};
-};
-
-struct ProgramOptions
-{
-    std::string applicationName{APPLICATION_NAME};
-    std::string prometheusURL{"localhost:9200"};
-    ::OpenTelemetryHTTPOptions otelHTTPOptions;
-    USEEDLinkToDataPacketImportProxy::SEEDLinkClientOptions
-        seedLinkClientOptions;
-    USEEDLinkToDataPacketImportProxy::GRPCOptions grpcOptions;
-    int maximumImportQueueSize{8192};
-    int verbosity{3};
-};
-
-void setVerbosityForSPDLOG(const int, std::shared_ptr<spdlog::logger> &);
-[[nodiscard]] std::pair<std::string, bool> parseCommandLineOptions(int, char *[]);
-[[nodiscard]] ProgramOptions parseIniFile(const std::filesystem::path &);
-
-void cleanupLogger()
-{
-    if (loggerProvider)
-    {
-        loggerProvider->ForceFlush();
-        loggerProvider.reset();
-        std::shared_ptr<opentelemetry::logs::LoggerProvider> none;
-        opentelemetry::logs::Provider::SetLoggerProvider(none);
-    }
-}
 
 class Process
 {
 public:
 
-    Process(const ::ProgramOptions &options,
-            std::shared_ptr<spdlog::logger> logger) :
+    Process
+    (
+        const USEEDLinkToDataPacketImportProxy::ProgramOptions &options,
+        std::shared_ptr<spdlog::logger> logger,
+        USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton *metrics
+    ) :
         mOptions(options),
-        mLogger(logger)
+        mLogger(logger),
+        mMetrics(metrics)
     {
         mSEEDLinkClient 
             = std::make_unique<USEEDLinkToDataPacketImportProxy::SEEDLinkClient>
               (mAddPacketCallbackFunction,
                mOptions.seedLinkClientOptions,
                mLogger);
-
         mMaximumImportQueueSize = mOptions.maximumImportQueueSize;
         mImportQueue.set_capacity(mMaximumImportQueueSize);
     }
@@ -145,13 +123,19 @@ public:
         assert(mLogger != nullptr);
 #endif
         constexpr std::chrono::milliseconds timeOut{10};
-        std::vector<std::chrono::seconds> retrySchedule{
-           std::chrono::seconds {0},
-           std::chrono::seconds {1}, 
-           std::chrono::seconds {5},
-           std::chrono::seconds {15}};
+        auto retrySchedule = mOptions.retrySchedule; 
+        std::sort(retrySchedule.begin(), retrySchedule.end());
+        if (retrySchedule.front() != std::chrono::seconds {0})
+        {
+            retrySchedule.insert(retrySchedule.begin(), std::chrono::seconds {0});
+#ifndef NDEBUG
+            assert(retrySchedule.size() == mOptions.retrySchedule.size());
+            assert(std::is_sorted(retrySchedule.begin(), retrySchedule.end()));
+#endif
+        }
         for (int kRetry = 0;
-             kRetry < static_cast<int> (retrySchedule.size()); ++kRetry)
+             kRetry < static_cast<int> (retrySchedule.size());
+             ++kRetry)
         {
             std::unique_lock<std::mutex> lock(mShutdownMutex);
             mShutdownCondition.wait_for(lock,
@@ -163,46 +147,26 @@ public:
             lock.unlock();
             if (!mKeepRunning){break;}
             bool isRetry = kRetry > 0 ? true : false;
-            auto channel = ::createChannel(mOptions.grpcOptions, mLogger, isRetry);
-            auto stub = UDataPacketImportAPI::V1::Frontend::NewStub(channel);
-            grpc::ClientContext context;
-            context.set_wait_for_ready(false);
-            UDataPacketImportAPI::V1::PublishResponse publishResponse;
-            std::unique_ptr
-            <
-                grpc::ClientWriter<UDataPacketImportAPI::V1::Packet>
-            > writer(stub->Publish(&context,  &publishResponse)); 
-#ifndef NDEBUG
-            assert(writer != nullptr);
-#endif
-            while (mKeepRunning.load())
-            {
-                UDataPacketImportAPI::V1::Packet packet;
-                if (mImportQueue.try_pop(packet))
-                {
-                    if (!writer->Write(packet))
-                    {
-                        SPDLOG_LOGGER_WARN(mLogger, "Broken stream");
-                        break;
-                    }
-                    kRetry = 0;
-                }
-                else
-                {
-                    std::this_thread::sleep_for(timeOut);
-                }
-            }
-            if (!mKeepRunning.load())
-            {
-                writer->WritesDone();
-            }
-            auto status = writer->Finish();
+            auto [status, hadSuccessfulWrite]
+                = USEEDLinkToDataPacketImportProxy::PacketWriter::
+                     publishSynchronously(mOptions.grpcOptions,
+                                          timeOut,
+                                          isRetry,
+                                          &mImportQueue,
+                                          &mKeepRunning,
+                                          mLogger);
+            // Handle the return codes
             if (status.ok())
             {
                 if (!mKeepRunning.load())
                 {
                     SPDLOG_LOGGER_INFO(mLogger, "RPC successfully finished");
                     break;
+                }
+                else
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                        "RPC successfully finished but I should keep writing");
                 }
             }
             else
@@ -220,7 +184,7 @@ public:
                     if (mKeepRunning.load())
                     {
                         SPDLOG_LOGGER_WARN(mLogger,
-                                           "Server-side cancele (message: {})",
+                                           "Server-side cancel (message: {})",
                                            errorMessage);
                     }
                     else
@@ -233,9 +197,16 @@ public:
                     SPDLOG_LOGGER_ERROR(mLogger,
                              "Publish RPC failed with error code {} (what: {})",
                              errorCode,  errorMessage);
+                    break;
                 }
             }
         } // Loop on retries
+        if (mKeepRunning.load())
+        {
+            SPDLOG_LOGGER_CRITICAL(mLogger,
+                                   "Publisher thread quitting!");
+            throw std::runtime_error("Premature end of publisher thread");
+        }
         SPDLOG_LOGGER_INFO(mLogger, "Publisher thread exiting");
     } 
 
@@ -244,7 +215,7 @@ public:
     {
         try
         {
-            auto approximateSize = mImportQueue.size();
+            auto approximateSize = static_cast<int> (mImportQueue.size());
             if (approximateSize > mMaximumImportQueueSize)
             {
                 while (mImportQueue.size() >= mMaximumImportQueueSize)
@@ -271,6 +242,36 @@ public:
                                std::string {e.what()});
         }
     }
+
+    // Print some summary statistics
+    void printSummary()
+    {   
+//        if (mMetrics == nullptr){return;}
+        if (mOptions.printSummaryInterval.count() <= 0){return;}
+        auto now 
+            = std::chrono::duration_cast<std::chrono::microseconds>
+              ((std::chrono::high_resolution_clock::now()).time_since_epoch());
+        if (now > mLastPrintSummary + mOptions.printSummaryInterval)
+        {
+            mLastPrintSummary = now;
+/*
+            auto nPublishers = mProxy->getNumberOfPublishers();
+            auto nSubscribers = mProxy->getNumberOfSubscribers(); 
+            auto nReceived = mMetrics->getReceivedPacketsCount();
+            auto nSent = mMetrics->getSentPacketsCount();
+            auto nPacketsReceived = nReceived - mReportNumberOfPacketsReceived;
+            auto nPacketsSent = nSent - mReportNumberOfPacketsSent;
+            mReportNumberOfPacketsReceived = nReceived;
+            mReportNumberOfPacketsSent = nSent;
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "Current number of publishers {}.  Current number of subscribers {}.  Packets received since last report {}.  Packets sent since last report {}.",
+                               nPublishers,
+                               nSubscribers,
+                               nPacketsReceived,
+                               nPacketsSent);
+*/
+        }
+    } 
 
     // Calling thread from Run gets stuck here then fails through to
     // destructor
@@ -300,6 +301,7 @@ public:
                     mShutdownCondition.notify_all();
                     break;
                 }
+                printSummary();
                 std::unique_lock<std::mutex> lock(mStopMutex);
                 mStopCondition.wait_for(lock,
                                         std::chrono::milliseconds {100},
@@ -332,10 +334,11 @@ public:
         sigaction(SIGINT,  &action, NULL);
         sigaction(SIGTERM, &action, NULL);
     }
-
 //private:
-    ::ProgramOptions mOptions;
+    USEEDLinkToDataPacketImportProxy::ProgramOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
+        *mMetrics{nullptr};
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mImportQueue;
     std::unique_ptr<USEEDLinkToDataPacketImportProxy::SEEDLinkClient>
         mSEEDLinkClient{nullptr};
@@ -349,7 +352,12 @@ public:
     //std::unique_ptr<UDataPacketImportAPI::V1::Frontend::Stub>
     //    mPublisherStub{nullptr};
     std::vector<std::future<void>> mFutures;
-    size_t mMaximumImportQueueSize{8192};
+    std::chrono::microseconds mLastPrintSummary
+    {   
+        std::chrono::duration_cast<std::chrono::microseconds>
+            ((std::chrono::high_resolution_clock::now()).time_since_epoch())
+    };
+    int mMaximumImportQueueSize{8192};
     mutable std::mutex mStopMutex;
     mutable std::mutex mShutdownMutex;
     std::condition_variable mStopCondition;
@@ -367,7 +375,9 @@ int main(int argc, char *argv[])
     std::filesystem::path iniFile;
     try 
     {   
-        auto [iniFileName, isHelp] = ::parseCommandLineOptions(argc, argv);
+        auto [iniFileName, isHelp]
+            = USEEDLinkToDataPacketImportProxy::parseCommandLineOptions(
+                 argc, argv);
         if (isHelp){return EXIT_SUCCESS;}
         iniFile = iniFileName;
     }   
@@ -380,10 +390,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }   
 
-    ::ProgramOptions programOptions;
+    USEEDLinkToDataPacketImportProxy::ProgramOptions programOptions;
     try 
     {
-        programOptions = ::parseIniFile(iniFile);
+        programOptions
+            = USEEDLinkToDataPacketImportProxy::parseIniFile(iniFile);
     }
     catch (const std::exception &e)
     {
@@ -394,74 +405,74 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // Create logger
-    std::shared_ptr<spdlog::logger> logger{nullptr};
-    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt> (); 
-    if (!programOptions.otelHTTPOptions.endpoint.empty())
-    { 
-/*
+    if (getenv("OTEL_SERVICE_NAME") == nullptr)
+    {
         constexpr int overwrite{1};
         setenv("OTEL_SERVICE_NAME",
                programOptions.applicationName.c_str(),
                overwrite);
-        namespace otel = opentelemetry;
-        otel::exporter::otlp::OtlpHttpLogRecordExporterOptions httpOptions;
-        httpOptions.url = programOptions.otelHTTPOptions.endpoint
-                        + programOptions.otelHTTPOptions.suffix;
-        //httpOptions.use_ssl_credentials = false;
-        //httpOptions.ssl_credentials_cacert_path = programOptions.otelGRPCOptions.certificatePath;
-        using providerPtr
-            = otel::nostd::shared_ptr<opentelemetry::logs::LoggerProvider>;
-        //auto exporter
-        //    = otel::exporter::logs::OStreamLogRecordExporterFactory::Create();
-        auto exporter
-              = otel::exporter::otlp::OtlpHttpLogRecordExporterFactory::Create(httpOptions);
-        auto processor
-            = otel::sdk::logs::SimpleLogRecordProcessorFactory::Create(
-                 std::move(exporter));
-        loggerProvider
-            = otel::sdk::logs::LoggerProviderFactory::Create(
-                std::move(processor));
-        std::shared_ptr<opentelemetry::logs::LoggerProvider> apiProvider = loggerProvider;
-        otel::logs::Provider::SetLoggerProvider(apiProvider);
+     }
 
-        auto otelLogger
-            = std::make_shared<spdlog::sinks::opentelemetry_sink_mt> ();
-        logger
-            = std::make_shared<spdlog::logger>
-              (spdlog::logger ("OTelLogger", {otelLogger, consoleSink}));
-*/
-    }
-    else
+    auto logger = USEEDLinkToDataPacketImportProxy::Logger
+             ::initialize(programOptions);
+    auto metrics
+         = &USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
+             ::getInstance();
+    try 
+    {   
+        if (programOptions.exportMetrics)
+        {   
+            SPDLOG_LOGGER_INFO(logger, "Initializing metrics");
+            USEEDLinkToDataPacketImportProxy::Metrics::initialize(programOptions);
+        }
+    }   
+    catch (const std::exception &e) 
     {
-        logger
-            = std::make_shared<spdlog::logger>
-              (spdlog::logger ("", {consoleSink}));
-    }
-    ::setVerbosityForSPDLOG(programOptions.verbosity, logger);
-    //::setVerbosityForSPDLOG(programOptions.verbosity, otelLogger);
+        SPDLOG_LOGGER_CRITICAL(logger,
+                               "Failed to initialize metrics because {}",
+                               std::string {e.what()});
+        if (programOptions.exportLogs)
+        {   
+            USEEDLinkToDataPacketImportProxy::Logger::cleanup();
+        }
+        return EXIT_FAILURE;
+    }   
 
-absl::InitializeLog();
+    //absl::InitializeLog();
     try
     {
-        ::Process process(programOptions, logger);
+        ::Process process(programOptions, logger, metrics);
         process.start();
-//        cleanupLogger();
+        if (programOptions.exportMetrics)
+        {
+            USEEDLinkToDataPacketImportProxy::Metrics::cleanup();
+        } 
+        if (programOptions.exportLogs)
+        {
+            USEEDLinkToDataPacketImportProxy::Logger::cleanup();
+        }
     }
     catch (const std::exception &e)
     {
-        SPDLOG_LOGGER_CRITICAL(logger, "Main process failed wtih {}",
+        SPDLOG_LOGGER_CRITICAL(logger, "Main process failed with {}",
                                std::string {e.what()});
-//        cleanupLogger();
+        if (programOptions.exportMetrics)
+        {
+            USEEDLinkToDataPacketImportProxy::Metrics::cleanup();
+        }
+        if (programOptions.exportLogs)
+        {
+            USEEDLinkToDataPacketImportProxy::Logger::cleanup();
+        }
         return EXIT_FAILURE;
     }
-
     return EXIT_SUCCESS;
 }
 
 ///--------------------------------------------------------------------------///
 ///                            Utility Functions                             ///
 ///--------------------------------------------------------------------------///
+/*
 namespace
 {   
         
@@ -793,5 +804,5 @@ loadStringFromFile(const std::filesystem::path &path)
     return options;
 }
 
-
 }
+*/

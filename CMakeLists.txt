@@ -48,7 +48,11 @@ set(LIBRARY_SRC
     ${PROTO_SRC})
 
 set(MODULE_FILES
+    src/modules/logger.cppm
+    src/modules/metrics.cppm
     src/modules/packetConverter.cppm
+    src/modules/packetWriter.cppm
+    src/modules/programOptions.cppm
     src/modules/otelSpdlogSink.cppm)
 
 if (${BUILD_SHARED_LIBS})
@@ -82,15 +86,15 @@ target_sources(libuSEEDLinkToDataPacketImportProxy
                PUBLIC FILE_SET
                       HEADERS
                       BASE_DIRS
-                        src
+                         src
                       FILES
-                        ${HEADER_FILES}
+                         ${HEADER_FILES}
                PUBLIC FILE_SET
                       CXX_MODULES
                       BASE_DIRS
-                        src/modules
+                         src/modules
                       FILES
-                        ${MODULE_FILES}
+                         ${MODULE_FILES}
                )
 protobuf_generate(TARGET libuSEEDLinkToDataPacketImportProxy
                   LANGUAGE cpp
@@ -102,36 +106,34 @@ protobuf_generate(TARGET libuSEEDLinkToDataPacketImportProxy
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
                  )
 
-
-#add_executable(uSEEDLinkToDataPacketImportProxy
-#               src/main.cpp
+add_executable(uSEEDLinkToDataPacketImportProxy
+               src/main.cpp)
 #               src/seedLinkClient.cpp
 #               ${COMMON_SRC})
-#set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
-#                      CXX_STANDARD 20
-#                      CXX_STANDARD_REQUIRED YES
-#                      CXX_EXTENSIONS NO)
+set_target_properties(uSEEDLinkToDataPacketImportProxy PROPERTIES
+                      CXX_STANDARD 20
+                      CXX_STANDARD_REQUIRED YES
+                      CXX_EXTENSIONS NO)
 #if (${BUILD_WITH_OTEL_LOGGING})
 #   add_compile_definitions(uSEEDLinkToDataPacketImportProxy PRIVATE USE_OTEL_LOGGING)
 #endif()
-#target_include_directories(uSEEDLinkToDataPacketImportProxy
-#                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-#                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
-#                          )
-#target_link_libraries(uSEEDLinkToDataPacketImportProxy
-#                      PRIVATE gRPC::grpc
-#                              gRPC::grpc++
-#                              protobuf::libprotobuf
-#                              opentelemetry-cpp::prometheus_exporter
-#                              #opentelemetry-cpp::otlp_http_log_record_exporter
-#                              #opentelemetry-cpp::ostream_log_record_exporter
-#                              spdlog::spdlog_header_only
-#                              SEEDLink::SEEDLink
-#                              mseed::mseed
-#                              TBB::tbb
-#                              Boost::headers
-#                              Boost::program_options
-#                              Threads::Threads)
+target_include_directories(uSEEDLinkToDataPacketImportProxy
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+                          )
+target_link_libraries(uSEEDLinkToDataPacketImportProxy
+                      PRIVATE uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
+                              gRPC::grpc
+                              gRPC::grpc++
+                              opentelemetry-cpp::otlp_http_log_record_exporter
+                              opentelemetry-cpp::otlp_http_metric_exporter
+                              spdlog::spdlog_header_only
+                              SEEDLink::SEEDLink
+                              mseed::mseed
+                              TBB::tbb
+                              Boost::headers
+                              Boost::program_options
+                              Threads::Threads)
 
 ##########################################################################################
 #                                         Tests                                          #

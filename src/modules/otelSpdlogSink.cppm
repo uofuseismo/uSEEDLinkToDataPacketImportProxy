@@ -16,7 +16,7 @@ module;
 
 #include <mutex>
 
-export module otelspdlog;
+export module OTelSpdLog;
 
 namespace spdlog::sinks
 {
