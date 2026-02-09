@@ -231,16 +231,8 @@ std::string StreamSelector::getSelector() const noexcept
 #ifndef NDEBUG
         assert(false);
 #else 
-        std::cerr << "Unhandled type" << std::endl;
+        throw std::runtime_error("Unhandled data type");
 #endif
-        if (locationChannel.empty())
-        {
-            return selector; // Return everything
-        }
-        else
-        {
-            selector = locationChannel + ".*";
-        }
     }
     return selector; 
 } 

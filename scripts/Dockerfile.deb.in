@@ -1,0 +1,25 @@
+# Purpose: Creates the container for running the uSEEDLinkToDataPacketImportProxy
+#          software in a Ubuntu container.
+# Usage: podman build -t useedlinktodatapacketimportproxy:latest -f Dockerfile.deb
+#        buildah bud -t useedlinktodatapacketimportproxy:latest -f Dockerfile.deb
+FROM ubuntu:24.04
+COPY @PROJECT_NAME@-@PROJECT_VERSION@-Linux.tar.gz .
+RUN apt-get update &&\ 
+    apt-get upgrade -y &&\ 
+    apt-get autoremove -y &&\ 
+    apt-get autoclean -y &&\ 
+    apt-get -y install bash &&\ 
+    apt-get -y install libcurl4-openssl-dev &&\ 
+    apt-get -y install libtbb-dev &&\ 
+    apt-get autoremove -y &&\ 
+    apt-get clean &&\ 
+    tar -xf ./@PROJECT_NAME@-@PROJECT_VERSION@-Linux.tar.gz &&\ 
+    mv ./@PROJECT_NAME@-@PROJECT_VERSION@-Linux/bin/uSEEDLinkToDataPacketImportProxy /usr/local/bin &&\ 
+    rm -r ./@PROJECT_NAME@-@PROJECT_VERSION@-Linux/ &&\ 
+    rm -r /var/lib/apt/lists/* ./@PROJECT_NAME@-@PROJECT_VERSION@-Linux.tar.gz
+
+RUN useradd -ms /bin/bash us8 
+USER us8 
+WORKDIR /home/us8
+
+#CMD /usr/local/bin/uSEEDLinkToDataPacketImportProxy --config=config.ini

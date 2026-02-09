@@ -38,21 +38,18 @@ set(PROTO_SRC
     uDataPacketImportAPI/v1/publish_response.proto
     uDataPacketImportAPI/v1/frontend.proto)
 
-set(COMMON_SRC
-    src/grpcOptions.cpp
-    #src/streamSelector.cpp
-    src/otelSpdlogSink.cpp
-    src/version.cpp
-    ${PROTO_SRC})
-
 set(LIBRARY_SRC
+    src/grpcOptions.cpp
+    src/seedLinkClient.cpp
     src/seedLinkClientOptions.cpp
     src/streamSelector.cpp
     src/seedLinkClient.cpp
+    src/version.cpp
     ${PROTO_SRC})
 
 set(MODULE_FILES
-    src/modules/packetConverter.cppm)
+    src/modules/packetConverter.cppm
+    src/modules/otelSpdlogSink.cppm)
 
 if (${BUILD_SHARED_LIBS})
    add_library(libuSEEDLinkToDataPacketImportProxy STATIC ${LIBRARY_SRC})
@@ -143,6 +140,7 @@ protobuf_generate(TARGET libuSEEDLinkToDataPacketImportProxy
 add_executable(unitTests
                testing/packetConverter.cpp
                testing/seedLink.cpp
+               testing/grpc.cpp
                )
 #               ${COMMON_SRC})
 set_target_properties(unitTests PROPERTIES
@@ -161,10 +159,7 @@ target_link_libraries(unitTests
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
-                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/data>
-                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
 add_test(NAME unitTests 
          COMMAND unitTests)
