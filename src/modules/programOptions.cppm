@@ -207,7 +207,7 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
                 }
                 // Data type
                 auto dataType = StreamSelector::Type::All;
-                if (splitSelector.size() > 4)
+                if (thisSelector.size() > 4)
                 {
                     boost::algorithm::trim(thisSelector.at(4));
                     if (thisSelector.at(4) == "D")
@@ -217,6 +217,11 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
                     else if (thisSelector.at(4) == "A")
                     {
                         dataType = StreamSelector::Type::All;
+                    }
+                    else
+                    {
+                        throw std::invalid_argument("Unhandled data type "
+                                                  + thisSelector.at(4));
                     }
                     // TODO other data types
                 }

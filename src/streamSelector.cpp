@@ -64,7 +64,10 @@ void StreamSelector::setNetwork(const std::string &network)
 {
     if (network.size() != 2)
     {
-        throw std::invalid_argument("Network size must 2");
+        throw std::invalid_argument("Received network "
+                                  + network + " which has length "
+                                  + std::to_string(network.size())
+                                  + " but network size must 2.");
     }
     pImpl->mNetwork = network;
     std::transform(pImpl->mNetwork.begin(),
