@@ -202,7 +202,7 @@ public:
                 }
             }
             // Check the packet
-            if (!mImportQueue.try_push(packet))
+            if (!mImportQueue.try_push(std::move(packet)))
             {
                 SPDLOG_LOGGER_WARN(mLogger,
                     "Failed to add packet to import queue");

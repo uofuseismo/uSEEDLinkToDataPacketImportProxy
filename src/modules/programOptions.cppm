@@ -356,6 +356,13 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
     options.verbosity
         = propertyTree.get<int> ("General.verbosity", options.verbosity);
 
+    options.maximumImportQueueSize
+        = propertyTree.get<int> ("General.maximumImportQueueSize",
+                                 options.maximumImportQueueSize);
+    if (options.maximumImportQueueSize <= 0)
+    {
+        throw std::invalid_argument("maximumImportQueueSize must be positive");
+    }
 
     // Metrics
     OTelHTTPMetricsOptions metricsOptions;
@@ -381,6 +388,7 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
         options.otelHTTPMetricsOptions = metricsOptions;
     } 
 
+    // Logging
     OTelHTTPLogOptions logOptions;
     logOptions.url
          = getOTelCollectorURL(propertyTree, "OTelHTTPLogOptions");

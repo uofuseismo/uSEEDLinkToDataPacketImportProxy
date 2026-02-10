@@ -1,6 +1,8 @@
+#include <iostream>
 #include <libslink.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <google/protobuf/util/time_util.h>
 #include "seedLinkClient.hpp"
 #include "seedLinkClientOptions.hpp"
 #include "streamSelector.hpp"
@@ -316,6 +318,13 @@ public:
                         {
                             try
                             {
+/*
+          std::cout << packet.stream_identifier().network() << "."
+          << packet.stream_identifier().station() << "."
+          << packet.stream_identifier().channel() << "."
+          << packet.stream_identifier().location_code() << " "
+          << google::protobuf::util::TimeUtil::ToString(packet.start_time()) << std::endl;
+*/
                                 mAddPacketCallback( std::move(packet) );
                             }
                             catch (const std::exception &e)
