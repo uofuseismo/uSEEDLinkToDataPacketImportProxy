@@ -15,6 +15,22 @@ jobs:
           name: "Build the code"
           command: |
             cmake --build build
+      - run:
+           name: "Test the code"
+           command: |
+            cd build
+            ctest --verbose
+      - run:
+           name: "Package code"
+           command: |
+             cd build
+             mkdir -p /tmp/artifacts
+             mkdir -p /tmp/workspace
+             cpack -B /tmp/artifacts TGZ
+             rm -rf /tmp/artifacts/_CPack_Packages
+             cp /tmp/artifacts/*-Linux.tar.gz /tmp/workspace/
+             cp Dockerfile.deb /tmp/workspace/
+             ls /tmp/workspace/
       - store_artifacts:
           path: /tmp/artifacts
       - persist_to_workspace:
@@ -31,6 +47,27 @@ jobs:
           at: /tmp/workspace
       - setup_remote_docker:
           docker_layer_caching: true
+      - run:
+          name: "Create docker image"
+          command: |
+            ls /tmp/workspace/
+            cd /tmp/workspace
+            ls
+            # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.tar.gz
+            tarFile=$(ls *Linux.tar.gz)
+            version=$(echo ${tarFile} | sed 's/uSEEDLinkToDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
+            echo ${version}
+            docker build -t useedlinktodatapacketimportproxy:latest -t useedlinktodatapacketimportproxy:${version} -f ./Dockerfile.deb .
+      - run:
+          name: "Quay login"
+          command: |
+            docker login -u="${QUAY_ROBOT_USER}" -p="${QUAY_ROBOT_PASSWORD}" quay.io
+      - run:
+          name: "Upload docker image to quay"
+          command: |
+            docker tag useedlinktodatapacketimportproxy quay.io/uuss/udatapacketimportproxy
+            docker push quay.io/uuss/useedlinktodatapacketimportproxy
+
     # End steps
   # End deploy job
 
