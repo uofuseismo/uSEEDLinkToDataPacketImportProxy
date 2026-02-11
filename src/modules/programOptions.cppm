@@ -53,6 +53,7 @@ export struct ProgramOptions
         std::chrono::seconds {15}
     };
     int maximumImportQueueSize{8192};
+    int maximumExportQueueSize{16384};
     int verbosity{3};
     bool exportLogs{false};
     bool exportMetrics{false};
@@ -362,6 +363,13 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
     if (options.maximumImportQueueSize <= 0)
     {
         throw std::invalid_argument("maximumImportQueueSize must be positive");
+    }
+    options.maximumExportQueueSize
+        = propertyTree.get<int> ("General.maximumExportQueueSize",
+                                 options.maximumExportQueueSize);
+    if (options.maximumExportQueueSize <= 0)
+    {   
+        throw std::invalid_argument("maximumExportQueueSize must be positive");
     }
 
     // Metrics

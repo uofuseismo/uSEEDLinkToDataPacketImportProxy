@@ -30,12 +30,10 @@ public:
     Process
     (
         const USEEDLinkToDataPacketImportProxy::ProgramOptions &options,
-        std::shared_ptr<spdlog::logger> logger,
-        USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton *metrics
+        std::shared_ptr<spdlog::logger> logger
     ) :
         mOptions(options),
-        mLogger(logger),
-        mMetrics(metrics)
+        mLogger(logger)
     {
         mSEEDLinkClient 
             = std::make_unique<USEEDLinkToDataPacketImportProxy::SEEDLinkClient>
@@ -43,7 +41,49 @@ public:
                mOptions.seedLinkClientOptions,
                mLogger);
         mMaximumImportQueueSize = mOptions.maximumImportQueueSize;
+        mMaximumExportQueueSize = mOptions.maximumExportQueueSize;
         mImportQueue.set_capacity(mMaximumImportQueueSize);
+        mExportQueue.set_capacity(mMaximumExportQueueSize);
+
+        if (mOptions.exportMetrics)
+        {
+/*
+            // Good packets
+            mPacketsReceivedCounter
+                = meter->CreateInt64ObservableCounter(
+                    "seismic_data.import.seedlink.client.packets.valid",
+                    "Number of valid data packets received from SEEDLink client.",
+                    "{packets}");
+            mPacketsReceivedCounter->AddCallback(
+                observePacketsReceived,
+                nullptr);
+
+           // Future packets
+    mFuturePacketsReceivedCounter
+        = meter->CreateInt64ObservableCounter(
+             "seismic_data.import.seedlink.client.packets.future",
+             "Number of future packets received from SEEDLink client.",
+             "{packets}");
+    mFuturePacketsReceivedCounter->AddCallback(
+        observeFuturePacketsReceived, nullptr);
+
+    // Expired packets
+    mExpiredPacketsReceivedCounter
+        = meter->CreateInt64ObservableCounter(
+             "seismic_data.import.seedlink.client.packets.expired",
+             "Number of expired packets received from SEEDLink client.",
+             "{packets}");
+    mExpiredPacketsReceivedCounter->AddCallback(
+        observeExpiredPacketsReceived, nullptr);
+
+    // Total packets
+    mTotalPacketsReceivedCounter
+        = meter->CreateInt64ObservableCounter(
+             "seismic_data.import.seedlink.client.packets.all",
+             "Total number of packets received from SEEDLink client.  This includes future and expired packets.",
+             "{packets}");
+*/
+        }
     }
 
     ~Process() 
@@ -56,6 +96,8 @@ public:
         //stop();
         std::this_thread::sleep_for(std::chrono::milliseconds {10});
         mKeepRunning.store(true);
+        mFutures.push_back(
+            std::async(&Process::tabulateMetricsAndPropagatePackets, this));
         mFutures.push_back(std::async(&Process::sendPacketsToProxy, this));
         mFutures.push_back(mSEEDLinkClient->start());
         handleMainThread();
@@ -124,7 +166,7 @@ public:
                      publishSynchronously(mOptions.grpcOptions,
                                           timeOut,
                                           isRetry,
-                                          &mImportQueue,
+                                          &mExportQueue, //ImportQueue,
                                           &mKeepRunning,
                                           mLogger);
             // Handle the return codes
@@ -182,26 +224,70 @@ public:
         SPDLOG_LOGGER_INFO(mLogger, "Publisher thread exiting");
     } 
 
-    /// Used by data client to add packets
-    void addPacketCallback(UDataPacketImportAPI::V1::Packet &&packet)
+    /// Thread that tabulates metrics and forwards packets to outbound queue
+    void tabulateMetricsAndPropagatePackets()
     {
-        try
+        constexpr std::chrono::milliseconds timeOut{15};
+        auto &metrics
+            = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+        while (mKeepRunning.load())
         {
-            auto approximateSize = static_cast<int> (mImportQueue.size());
-            if (approximateSize > mMaximumImportQueueSize)
+            // Check the packet
+            UDataPacketImportAPI::V1::Packet packet;
+            if (mImportQueue.try_pop(packet))
             {
-                while (mImportQueue.size() >= mMaximumImportQueueSize)
+                try
+                {
+                    metrics.tabulateMetrics(packet);
+                }
+                catch (const std::exception &e)
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "Failed to update metrics because {}",
+                                       std::string {e.what()});
+                }
+                while (mExportQueue.size() >= mMaximumExportQueueSize)
                 {
                     UDataPacketImportAPI::V1::Packet workSpace;
-                    if (!mImportQueue.try_pop(workSpace))
+                    if (!mExportQueue.try_pop(workSpace))
                     {
                         SPDLOG_LOGGER_WARN(mLogger, 
                             "Failed to pop front of queue while adding packet");
                         break;
                     }
                 }
+                // Send the packet
+                if (!mExportQueue.try_push(std::move(packet)))
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                        "Failed to add packet to export queue");
+                }
             }
-            // Check the packet
+            else
+            {
+                std::this_thread::sleep_for(timeOut);
+            }
+        } // Loop
+        SPDLOG_LOGGER_DEBUG(mLogger,
+                      "Thread exiting metrics and packet propagation function");
+    }
+
+    /// Used by data client to add packets
+    void addPacketCallback(UDataPacketImportAPI::V1::Packet &&packet)
+    {
+        try
+        {
+            while (mImportQueue.size() >= mMaximumImportQueueSize)
+            {
+                UDataPacketImportAPI::V1::Packet workSpace;
+                if (!mImportQueue.try_pop(workSpace))
+                {
+                    SPDLOG_LOGGER_WARN(mLogger, 
+                        "Failed to pop front of queue while adding packet");
+                    break;
+                }
+            }
+            // Send the packet
             if (!mImportQueue.try_push(std::move(packet)))
             {
                 SPDLOG_LOGGER_WARN(mLogger,
@@ -218,7 +304,6 @@ public:
     // Print some summary statistics
     void printSummary()
     {   
-//        if (mMetrics == nullptr){return;}
         if (mOptions.printSummaryInterval.count() <= 0){return;}
         auto now 
             = std::chrono::duration_cast<std::chrono::microseconds>
@@ -309,9 +394,8 @@ public:
 //private:
     USEEDLinkToDataPacketImportProxy::ProgramOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
-        *mMetrics{nullptr};
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mImportQueue;
+    tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mExportQueue;
     std::unique_ptr<USEEDLinkToDataPacketImportProxy::SEEDLinkClient>
         mSEEDLinkClient{nullptr};
     std::function<void(UDataPacketImportAPI::V1::Packet &&)>
@@ -330,6 +414,7 @@ public:
             ((std::chrono::high_resolution_clock::now()).time_since_epoch())
     };
     int mMaximumImportQueueSize{8192};
+    int mMaximumExportQueueSize{16384};
     mutable std::mutex mStopMutex;
     mutable std::mutex mShutdownMutex;
     std::condition_variable mStopCondition;
@@ -385,11 +470,11 @@ int main(int argc, char *argv[])
                overwrite);
      }
 
-    auto logger = USEEDLinkToDataPacketImportProxy::Logger
-             ::initialize(programOptions);
-    auto metrics
-         = &USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
-             ::getInstance();
+    auto logger
+        = USEEDLinkToDataPacketImportProxy::Logger::initialize(programOptions);
+    // Initialize the metrics singleton
+    USEEDLinkToDataPacketImportProxy::Metrics::initializeMetricsSingleton();
+
     try 
     {   
         if (programOptions.exportMetrics)
@@ -413,7 +498,7 @@ int main(int argc, char *argv[])
     //absl::InitializeLog();
     try
     {
-        ::Process process(programOptions, logger, metrics);
+        ::Process process(programOptions, logger);
         process.start();
         if (programOptions.exportMetrics)
         {
