@@ -65,7 +65,7 @@ jobs:
       - run:
           name: "Upload docker image to quay"
           command: |
-            docker tag useedlinktodatapacketimportproxy quay.io/uuss/udatapacketimportproxy
+            docker tag useedlinktodatapacketimportproxy quay.io/uuss/useedlinktodatapacketimportproxy
             docker push quay.io/uuss/useedlinktodatapacketimportproxy
 
     # End steps
