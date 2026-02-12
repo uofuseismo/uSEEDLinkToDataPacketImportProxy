@@ -120,8 +120,11 @@ public:
     [[nodiscard]] std::chrono::seconds getNetworkReconnectDelay() const noexcept;
 
     /// @brief Adds a stream selector.
+    /// @param[in] selector      The selector to add.
+    /// @result True indicates the selector was added.
     /// @throws std::invalid_argument if the selector is not properly set.
-    void addStreamSelector(const StreamSelector &selector);
+    [[nodiscard]] bool addStreamSelector(const StreamSelector &selector);
+
     /// @result The stream selectors. 
     [[nodiscard]] std::vector<StreamSelector> getStreamSelectors() const noexcept;
     /// @}

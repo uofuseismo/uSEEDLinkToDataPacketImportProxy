@@ -54,6 +54,64 @@ std::string pack(const T *data, const int nSamples, const bool swapBytes)
     return result;
 }
 
+export
+template<typename T>
+std::vector<T> unpack(const std::string &data, const int nSamples,
+                      const bool swapBytes)
+{
+    constexpr auto dataTypeSize = sizeof(T);
+    std::vector<T> result;
+    if (nSamples < 1){return result;}
+    if (static_cast<size_t> (nSamples)*dataTypeSize != data.size())
+    {
+        throw std::invalid_argument("Unexpected data size");
+    }
+    result.resize(nSamples);
+    // Pack it up
+    union CharacterValueUnion
+    {
+        unsigned char cArray[dataTypeSize];
+        T value;
+    };
+    CharacterValueUnion cvUnion;
+    if (!swapBytes)
+    {
+        for (int i = 0; i < nSamples; ++i)
+        {
+            cvUnion.value = data[i];
+            auto i1 = i*dataTypeSize;
+            auto i2 = i1 + dataTypeSize;
+            std::copy(data.data() + i1, data.data() + i2,
+                      cvUnion.cArray);
+            result[i] = cvUnion.value;
+        }
+    }
+    else
+    {
+        for (int i = 0; i < nSamples; ++i)
+        {
+            cvUnion.value = data[i];
+            auto i1 = i*dataTypeSize;
+            auto i2 = i1 + dataTypeSize;
+            std::reverse_copy(data.data() + i1, data.data() + i2,
+                              cvUnion.cArray);
+            result[i] = cvUnion.value;
+        }
+    }
+    return result;
+}
+
+export
+template<typename T>
+std::vector<T> unpack(const std::string &data, const int nSamples)
+{
+    const bool swapBytes
+    {   
+        std::endian::native == std::endian::little ? false : true
+    };  
+    return unpack<T>(data, nSamples, swapBytes);
+}
+
 [[nodiscard]] UDataPacketImportAPI::V1::Packet
     convert(const MS3Record &miniSEEDRecord, const bool swapBytes)
 {
@@ -249,7 +307,7 @@ std::pair<std::vector<UDataPacketImportAPI::V1::Packet>, int>
 }
 
 export
-[[nodiscard]] 
+[[nodiscard]]
 std::pair<std::vector<UDataPacketImportAPI::V1::Packet>, int>
     miniSEEDToPackets(char *msRecord, const int bufferSize)
 {

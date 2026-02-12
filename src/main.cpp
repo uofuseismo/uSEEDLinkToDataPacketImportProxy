@@ -8,6 +8,8 @@
 #include <absl/log/initialize.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <opentelemetry/metrics/meter_provider.h>
+#include <opentelemetry/metrics/provider.h>
 #include <uDataPacketImportAPI/v1/packet.pb.h>
 #include <uDataPacketImportAPI/v1/frontend.grpc.pb.h>
 #include "seedLinkClient.hpp"
@@ -22,6 +24,17 @@ namespace
 {
 
 std::atomic<bool> mInterrupted{false};
+
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    validPacketsReceivedCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    futurePacketsReceivedCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    expiredPacketsReceivedCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    totalPacketsReceivedCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    totalPacketsSentCounter;
 
 class Process
 {
@@ -47,42 +60,58 @@ public:
 
         if (mOptions.exportMetrics)
         {
-/*
+            // Need a provider from which to get a meter.  This is initialized
+            // once and should last the duration of the application.
+            auto provider 
+                = opentelemetry::metrics::Provider::GetMeterProvider();
+         
+            // Meter will be bound to application (library, module, class, etc.)
+            // so as to identify who is genreating these metrics.
+            auto meter = provider->GetMeter(mOptions.applicationName, "1.2.0");
+
+            namespace UMetrics = USEEDLinkToDataPacketImportProxy::Metrics;
             // Good packets
-            mPacketsReceivedCounter
+            validPacketsReceivedCounter
                 = meter->CreateInt64ObservableCounter(
                     "seismic_data.import.seedlink.client.packets.valid",
                     "Number of valid data packets received from SEEDLink client.",
                     "{packets}");
-            mPacketsReceivedCounter->AddCallback(
-                observePacketsReceived,
+            validPacketsReceivedCounter->AddCallback(
+                UMetrics::observeValidPacketsReceived,
                 nullptr);
+            // Future packets
+            futurePacketsReceivedCounter
+                = meter->CreateInt64ObservableCounter(
+                   "seismic_data.import.seedlink.client.packets.future",
+                   "Number of future packets received from SEEDLink client.",
+                   "{packets}");
+            futurePacketsReceivedCounter->AddCallback(
+                UMetrics::observeFuturePacketsReceived, nullptr);
+            // Expired packets
+            expiredPacketsReceivedCounter
+                = meter->CreateInt64ObservableCounter(
+                   "seismic_data.import.seedlink.client.packets.expired",
+                   "Number of expired packets received from SEEDLink client.",
+                   "{packets}");
+            expiredPacketsReceivedCounter->AddCallback(
+                UMetrics::observeExpiredPacketsReceived, nullptr);
+            // Total packets
+            totalPacketsReceivedCounter
+                = meter->CreateInt64ObservableCounter(
+                    "seismic_data.import.seedlink.client.packets.all",
+                    "Total number of packets received from SEEDLink client.  This includes future and expired packets.",
+                    "{packets}");
+            totalPacketsReceivedCounter->AddCallback(
+                UMetrics::observeTotalPacketsReceived, nullptr);
+            // Total packets sent
+            totalPacketsSentCounter
+                = meter->CreateInt64ObservableCounter(
+                    "seismic_data.import.seedlink.client.packets.sent",
+                    "Total number of packets sent to the import proxy.",
+                    "{packets}");
+            totalPacketsSentCounter->AddCallback(
+                UMetrics::observeTotalPacketsSent, nullptr);
 
-           // Future packets
-    mFuturePacketsReceivedCounter
-        = meter->CreateInt64ObservableCounter(
-             "seismic_data.import.seedlink.client.packets.future",
-             "Number of future packets received from SEEDLink client.",
-             "{packets}");
-    mFuturePacketsReceivedCounter->AddCallback(
-        observeFuturePacketsReceived, nullptr);
-
-    // Expired packets
-    mExpiredPacketsReceivedCounter
-        = meter->CreateInt64ObservableCounter(
-             "seismic_data.import.seedlink.client.packets.expired",
-             "Number of expired packets received from SEEDLink client.",
-             "{packets}");
-    mExpiredPacketsReceivedCounter->AddCallback(
-        observeExpiredPacketsReceived, nullptr);
-
-    // Total packets
-    mTotalPacketsReceivedCounter
-        = meter->CreateInt64ObservableCounter(
-             "seismic_data.import.seedlink.client.packets.all",
-             "Total number of packets received from SEEDLink client.  This includes future and expired packets.",
-             "{packets}");
-*/
         }
     }
 
@@ -96,6 +125,8 @@ public:
         //stop();
         std::this_thread::sleep_for(std::chrono::milliseconds {10});
         mKeepRunning.store(true);
+        mFutures.push_back(
+            std::async(&Process::updateWindowedMetrics, this));
         mFutures.push_back(
             std::async(&Process::tabulateMetricsAndPropagatePackets, this));
         mFutures.push_back(std::async(&Process::sendPacketsToProxy, this));
@@ -224,12 +255,49 @@ public:
         SPDLOG_LOGGER_INFO(mLogger, "Publisher thread exiting");
     } 
 
+    /// Thread that updates the windowed metrics.  Basically, what can happen
+    /// is if the import telemetry drops then the metric tabulator thread will
+    /// never get around to this activity so shift the responsibility to this
+    /// thread.
+    void updateWindowedMetrics()
+    {
+        auto &metrics
+            = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
+                                                       ::getInstance();
+        constexpr std::chrono::seconds timeOut{1};       
+        while (mKeepRunning.load())
+        {
+            try
+            {
+                metrics.updateAndResetWindowedMetrics();
+            }
+            catch (const std::exception &e)
+            {
+                SPDLOG_LOGGER_ERROR(mLogger,
+                                    "Metrics update/reset failed with {}",
+                                    std::string {e.what()});
+            }
+            std::unique_lock<std::mutex> lock(mStopMutex);
+            mShutdownCondition.wait_for(lock, timeOut,
+                                        [this]
+                                        {
+                                            return mShutdownRequested;
+                                        });
+        }
+        if (mKeepRunning.load())
+        {
+            throw std::runtime_error("Premature end of windowed metrics");
+        }
+        SPDLOG_LOGGER_DEBUG(mLogger, "Thread exiting update windowed metrics");
+    }
+
     /// Thread that tabulates metrics and forwards packets to outbound queue
     void tabulateMetricsAndPropagatePackets()
     {
         constexpr std::chrono::milliseconds timeOut{15};
         auto &metrics
-            = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+            = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
+                                                       ::getInstance();
         while (mKeepRunning.load())
         {
             // Check the packet
@@ -238,6 +306,7 @@ public:
             {
                 try
                 {
+                    metrics.incrementReceivedPacketsCounter();
                     metrics.tabulateMetrics(packet);
                 }
                 catch (const std::exception &e)
@@ -310,23 +379,21 @@ public:
               ((std::chrono::high_resolution_clock::now()).time_since_epoch());
         if (now > mLastPrintSummary + mOptions.printSummaryInterval)
         {
+            auto &metrics
+                = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
+                                                           ::getInstance();
+
             mLastPrintSummary = now;
-/*
-            auto nPublishers = mProxy->getNumberOfPublishers();
-            auto nSubscribers = mProxy->getNumberOfSubscribers(); 
-            auto nReceived = mMetrics->getReceivedPacketsCount();
-            auto nSent = mMetrics->getSentPacketsCount();
-            auto nPacketsReceived = nReceived - mReportNumberOfPacketsReceived;
-            auto nPacketsSent = nSent - mReportNumberOfPacketsSent;
+            auto nReceived = metrics.getReceivedPacketsCount();
+            auto nSent = metrics.getSentPacketsCount();
+            auto tempPacketsReceived = nReceived;
+            auto tempPacketsSent = nSent;
             mReportNumberOfPacketsReceived = nReceived;
             mReportNumberOfPacketsSent = nSent;
             SPDLOG_LOGGER_INFO(mLogger,
-                               "Current number of publishers {}.  Current number of subscribers {}.  Packets received since last report {}.  Packets sent since last report {}.",
-                               nPublishers,
-                               nSubscribers,
-                               nPacketsReceived,
-                               nPacketsSent);
-*/
+                "Imported {} packets and sent {} packets since last report.",
+                tempPacketsReceived,
+                tempPacketsSent);
         }
     } 
 
@@ -413,6 +480,8 @@ public:
         std::chrono::duration_cast<std::chrono::microseconds>
             ((std::chrono::high_resolution_clock::now()).time_since_epoch())
     };
+    int64_t mReportNumberOfPacketsReceived{0};
+    int64_t mReportNumberOfPacketsSent{0};
     int mMaximumImportQueueSize{8192};
     int mMaximumExportQueueSize{16384};
     mutable std::mutex mStopMutex;

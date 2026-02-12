@@ -16,7 +16,7 @@ module;
 #include "grpcOptions.hpp"
 
 export module PacketWriter;
-
+import Metrics;
 import ProgramOptions;
 
 namespace USEEDLinkToDataPacketImportProxy::PacketWriter
@@ -140,7 +140,10 @@ std::pair<grpc::Status, bool>
     auto stub = UDataPacketImportAPI::V1::Frontend::NewStub(channel);
     grpc::ClientContext context;
     context.set_wait_for_ready(false);
-
+    USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics
+    {
+        USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton::getInstance()
+    };
     bool hadSuccessfulWrite{false}; 
     UDataPacketImportAPI::V1::PublishResponse publishResponse;
     std::unique_ptr
@@ -161,6 +164,7 @@ std::pair<grpc::Status, bool>
                 break;
             }
             hadSuccessfulWrite = true;
+            mMetrics.incrementSentPacketsCounter();
         }
         else
         {

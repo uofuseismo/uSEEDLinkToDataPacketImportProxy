@@ -199,7 +199,7 @@ std::chrono::seconds
 }
 
 /// Stream selectors
-void SEEDLinkClientOptions::addStreamSelector(
+bool SEEDLinkClientOptions::addStreamSelector(
     const StreamSelector &selector)
 {
     if (!selector.hasNetwork())
@@ -215,10 +215,15 @@ void SEEDLinkClientOptions::addStreamSelector(
             station == mySelector.getStation() &&
             dataSelector == mySelector.getSelector())
         {
-            throw std::invalid_argument("Duplicate selector");
+            return false;
+            throw std::invalid_argument("Duplicate selector for "
+                                      + network + " "
+                                      + station + " "
+                                      + dataSelector);
         }
     }
     pImpl->mSelectors.push_back(selector);
+    return true;
 }
 
 std::vector<StreamSelector> 

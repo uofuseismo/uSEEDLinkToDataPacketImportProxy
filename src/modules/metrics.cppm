@@ -3,6 +3,8 @@ module;
 #include <mutex>
 #include <atomic>
 #include <string>
+#include <bit>
+#include <vector>
 #include <map>
 #include <algorithm>
 #include <opentelemetry/nostd/shared_ptr.h>
@@ -26,9 +28,12 @@ module;
 
 export module Metrics;
 import ProgramOptions;
+import PacketConverter;
 
 namespace USEEDLinkToDataPacketImportProxy::Metrics
 {
+
+#define UPDATE_INTERVAL_SECONDS 120
 
 export void initialize(
     const USEEDLinkToDataPacketImportProxy::ProgramOptions &programOptions)
@@ -72,9 +77,128 @@ export void initialize(
 
 export void cleanup()
 {
-     std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
-     opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
+    std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
+    opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
 }
+
+template<typename T>
+void computeSumAndSumSquared(const std::vector<T> &data,
+                             double *packetSum,
+                             double *packetSum2)
+{
+#ifndef NDEBUG
+    assert(packetSum != nullptr);
+    assert(packetSum2 != nullptr);
+#endif
+    double sum{0};
+    double sum2{0};
+    for (int i = 0; i < static_cast<int> (data.size()); ++i)
+    {
+        auto d = data[i];
+        sum = sum + d;
+        sum2 = sum2 + d*d;
+    }
+    *packetSum = sum;
+    *packetSum2 = sum2;
+}
+
+struct WindowedMetrics
+{
+    void update(const UDataPacketImportAPI::V1::Packet &packet,
+                const std::chrono::microseconds &packetEndTime)
+    {
+        auto nSamples = packet.number_of_samples();
+        if (nSamples < 1){return;}
+        // Get data
+        namespace UDP = UDataPacketImportAPI::V1;
+        namespace UPC = USEEDLinkToDataPacketImportProxy::PacketConverter;
+        double packetSum{0};
+        double packetSum2{0};
+        if (packet.data_type() == UDP::DATA_TYPE_INTEGER_32)
+        {
+            auto data
+                = UPC::unpack<int32_t>(packet.data(), nSamples, swapBytes); 
+            computeSumAndSumSquared(data, &packetSum, &packetSum2);
+        }
+        else if (packet.data_type() == UDP::DATA_TYPE_INTEGER_64)
+        {
+            auto data
+                = UPC::unpack<int64_t>(packet.data(), nSamples, swapBytes);
+            computeSumAndSumSquared(data, &packetSum, &packetSum2);
+        }
+        else if (packet.data_type() == UDP::DATA_TYPE_FLOAT)
+        {
+            auto data
+                = UPC::unpack<float>(packet.data(), nSamples, swapBytes);
+            computeSumAndSumSquared(data, &packetSum, &packetSum2);
+        }
+        else if (packet.data_type() == UDP::DATA_TYPE_DOUBLE)
+        {
+            auto data
+                = UPC::unpack<double>(packet.data(), nSamples, swapBytes);
+            computeSumAndSumSquared(data, &packetSum, &packetSum2);
+        }
+        else
+        {
+            if (packet.data_type() == UDP::DATA_TYPE_UNKNOWN){return;}
+            if (packet.data_type() == UDP::DATA_TYPE_TEXT){return;}
+            throw std::invalid_argument("Unhandled data type");
+        }
+        // Update sums
+        {
+        std::scoped_lock{mMutex};
+        sum = sum + packetSum;
+        sumSquared = sumSquared + packetSum;
+        samplesCount = samplesCount + nSamples;
+        packetsCount = packetsCount + 1;
+        sumLatency = sumLatency + packetEndTime;
+        }
+    }
+
+    [[nodiscard]] bool updateAndReset(const std::chrono::microseconds &now)
+    {
+        bool wasUpdated{false};
+        if (now >= lastUpdate + updateInterval)
+        {
+            wasUpdated = true;
+
+            {
+            std::scoped_lock lock{mMutex};
+            sumLatency = std::chrono::microseconds{0};
+            sum = 0;
+            sumSquared = 0;
+            samplesCount = 0;
+            packetsCount = 0;
+            }
+        }
+        return wasUpdated;
+    }
+
+    double getWindowedAverageLatency() const
+    {
+        return windowedAverageLatency.load();
+    }
+
+    mutable std::mutex mMutex;
+    std::chrono::seconds updateInterval{UPDATE_INTERVAL_SECONDS};
+    std::chrono::microseconds lastUpdate
+    {
+        std::chrono::duration_cast<std::chrono::microseconds>
+        ((std::chrono::high_resolution_clock::now()).time_since_epoch())
+    };
+    std::chrono::microseconds sumLatency{0};
+    std::atomic<double> windowedAverageLatency{0};
+    std::atomic<double> windowedAverageCounts{0};
+    std::atomic<double> windowedStdCounts{0};
+    double sum{0};
+    double sumSquared{0};
+    int64_t samplesCount{0};
+    int64_t packetsCount{0};
+    bool swapBytes
+    {
+        std::endian::native == std::endian::little ? false : true
+    };
+};
 
 [[nodiscard]] 
 std::string toKeyName(const UDataPacketImportAPI::V1::StreamIdentifier &identifier)
@@ -115,10 +239,12 @@ public:
     void tabulateMetrics(const UDataPacketImportAPI::V1::Packet &packet)
     {
         auto key = toKeyName(packet); // Throws
-
+        // If it made it this far then we update the total packets received
+        incrementTotalPacketsCounter(key);
+        // Okay check the times
         int nSamples = packet.number_of_samples();
         if (nSamples <= 0)
-        {   
+        {
             throw std::invalid_argument("Empty packet for " + key);
         }   
         double samplingRate = packet.sampling_rate();
@@ -129,33 +255,74 @@ public:
         }
         auto samplingPeriod = 1./samplingRate;
 
+        // I really don't need an absurd amount of resolution and would
+        // rather be resistant to overflow so microseconds are fine.
+        namespace gutil = google::protobuf::util;
         auto startTime = packet.start_time();
         auto startTimeMicroSeconds
-            = google::protobuf::util::TimeUtil::TimestampToMicroseconds(startTime);
+            = gutil::TimeUtil::TimestampToMicroseconds(startTime);
         auto endTime = startTime;
         auto endTimeNanoSeconds
             = endTime.nanos()
             + std::max(0, (nSamples - 1))*samplingPeriod*1000000000;
         endTime.set_nanos(endTimeNanoSeconds);
         auto endTimeMicroSeconds
-            = google::protobuf::util::TimeUtil::TimestampToMicroseconds(endTime);
+            = gutil::TimeUtil::TimestampToMicroseconds(endTime);
 
-        // We really don't need an absurd amount of resolution
         auto now 
             = std::chrono::duration_cast<std::chrono::microseconds>
               ((std::chrono::high_resolution_clock::now()).time_since_epoch());
+        auto startValidTime = now.count() - mMaximumLatency.count();
+        auto endValidTime = now.count() + mMaximumFutureTime.count();
         // Future
-        if (endTimeMicroSeconds > now.count() + mMaximumFutureTime.count())
+        if (endTimeMicroSeconds > endValidTime)
         {
-
+            incrementFuturePacketsCounter(key);
+            return;
         }
         // Historical
-        if (startTimeMicroSeconds < now.count() - mMaximumLatency.count())
+        else if (startTimeMicroSeconds < startValidTime)
         {
-
+            incrementExpiredPacketsCounter(key);
+            return;
+        }
+        // This is a typical good packet, tabulate metrics
+        incrementReceivedPacketsCounter(key);
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mWindowedMetricsMap.find(key);
+        if (idx == mWindowedMetricsMap.end())
+        {
+            auto metrics = std::make_unique<WindowedMetrics> ();
+            metrics->update(packet, 
+                            std::chrono::microseconds {endTimeMicroSeconds});
+            mWindowedMetricsMap.insert( std::pair{key, std::move(metrics)} );     
+        }
+        else
+        {
+            idx->second->update(packet,
+                                std::chrono::microseconds {endTimeMicroSeconds});
+        }
         }
     }
 
+    /// Store windowed metrics and reset for next window
+    void updateAndResetWindowedMetrics()
+    {
+        auto now 
+            = std::chrono::duration_cast<std::chrono::microseconds>
+              ((std::chrono::high_resolution_clock::now()).time_since_epoch());
+        std::lock_guard<std::mutex> lock(mMutex);
+        for (auto &item : mWindowedMetricsMap)
+        {
+            auto updated = item.second->updateAndReset(now);
+            if (updated)
+            {
+            }
+        }
+    }
+
+    /// Received packets
     void incrementReceivedPacketsCounter(const std::string &key)
     {
         std::lock_guard<std::mutex> lock(mMutex);
@@ -174,6 +341,27 @@ public:
     {
         std::lock_guard<std::mutex> lock(mMutex);
         return mReceivedPacketsCounterMap;
+    }
+
+    /// Future counter
+    void incrementFuturePacketsCounter(const std::string &key)
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mFuturePacketsCounterMap.find(key);
+        if (idx == mFuturePacketsCounterMap.end())
+        {
+            mFuturePacketsCounterMap.insert( std::pair {key, 1} );
+        }
+        else
+        {
+            idx->second = idx->second + 1;
+        }
+    }
+
+    [[nodiscard]] std::map<std::string, int64_t> getFuturePacketsCounters() const
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mFuturePacketsCounterMap;
     }
 
     /// Expired counter
@@ -198,18 +386,47 @@ public:
     }
 
     /// Total packets counter
+    void incrementTotalPacketsCounter(const std::string &key)
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mTotalPacketsCounterMap.find(key);
+        if (idx == mTotalPacketsCounterMap.end())
+        {
+            mTotalPacketsCounterMap.insert( std::pair {key, 1} );
+        }
+        else
+        {
+            idx->second = idx->second + 1;
+        }
+    }
+
+    [[nodiscard]] std::map<std::string, int64_t> getTotalPacketsCounters() const
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mTotalPacketsCounterMap;
+    }
 
 
-/*
-    [[nodiscard]] int64_t getReceivedPacketsCounter() const noexcept
+    void incrementReceivedPacketsCounter()
+    {   
+        mReceivedPacketsCounter.fetch_add(1);
+    }   
+
+    [[nodiscard]] int64_t getReceivedPacketsCount() const noexcept
     {
         return mReceivedPacketsCounter.load();
     }
-    [[nodiscard]] std::chrono::microseconds getWindowedAverageLatency() const noexcept
+
+    void incrementSentPacketsCounter() 
     {
-        return mWindowedAverageLatency.load();
+        mSentPacketsCounter.fetch_add(1);
     }
-*/
+
+    [[nodiscard]] int64_t getSentPacketsCount() const noexcept
+    {   
+        return mReceivedPacketsCounter.load();
+    }   
+
 private:
     MetricsSingleton() = default;
     ~MetricsSingleton() = default;
@@ -218,6 +435,9 @@ private:
     std::map<std::string, int64_t> mExpiredPacketsCounterMap;
     std::map<std::string, int64_t> mFuturePacketsCounterMap;
     std::map<std::string, int64_t> mTotalPacketsCounterMap;
+    std::map<std::string, std::unique_ptr<WindowedMetrics>> mWindowedMetricsMap;
+    std::atomic<int64_t> mReceivedPacketsCounter{0};
+    std::atomic<int64_t> mSentPacketsCounter{0};
     std::chrono::microseconds mMaximumLatency{std::chrono::days {180}};
     std::chrono::microseconds mMaximumFutureTime{0};
 };
@@ -227,7 +447,8 @@ export void initializeMetricsSingleton()
     MetricsSingleton::getInstance();
 }
 
-void observeReceivedPacketsReceived(
+export
+void observeValidPacketsReceived(
     opentelemetry::metrics::ObserverResult observerResult,
     void *)
 {
@@ -272,7 +493,53 @@ void observeReceivedPacketsReceived(
     }   
 }
 
+export
+void observeFuturePacketsReceived(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult))
+    {
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto map = instance.getFuturePacketsCounters();
+            for (const auto &item : map)
+            {
+                try 
+                {
+                    auto key = item.first;
+                    auto value = item.second;
+                    std::map<std::string, std::string>
+                        attribute{ {"stream", item.first} };
+                    observer->Observe(value, attribute);
+                }
+                catch (...) //const std::exception &e) 
+                {   
+                    //spdlog::warn(e.what());
+                }
+            }   
+        }
+        catch (...)
+        {
+        }
+    }   
+}
 
+export
 void observeExpiredPacketsReceived(
     opentelemetry::metrics::ObserverResult observerResult,
     void *)
@@ -315,8 +582,87 @@ void observeExpiredPacketsReceived(
         catch (...)
         {
         }
+    }
+}
+
+export
+void observeTotalPacketsReceived(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<int64_t>
+            >   
+        > (observerResult))
+    {
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto map = instance.getTotalPacketsCounters();
+            for (const auto &item : map)
+            {
+                try
+                {
+                    auto key = item.first;
+                    auto value = item.second;
+                    std::map<std::string, std::string>
+                        attribute{ {"stream", item.first} };
+                    observer->Observe(value, attribute);
+                }
+                catch (...) //const std::exception &e) 
+                {
+                    //spdlog::warn(e.what());
+                }
+            }
+        }
+        catch (...)
+        {
+        }
+    }
+}
+
+export void observeTotalPacketsSent(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult))
+    {   
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto value = instance.getSentPacketsCount();
+            observer->Observe(value);
+        }
+        catch (const std::exception &e) 
+        {
+
+        }
     }   
 }
+
 
 
 }

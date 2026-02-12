@@ -313,6 +313,11 @@ public:
                         {
                             SPDLOG_LOGGER_WARN(mLogger, "Created {} packets",
                                                packets.size());
+                            std::sort(packets.begin(), packets.end(),
+                                      [](const auto &lhs, const auto &rhs)
+                                      {
+                                         return lhs.start_time() < rhs.start_time();
+                                      });
                         }
                         for (auto &packet : packets)
                         {

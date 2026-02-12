@@ -227,7 +227,16 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
                     // TODO other data types
                 }
                 selector.setSelector(channel, locationCode, dataType);
-                clientOptions.addStreamSelector(selector);
+                auto added = clientOptions.addStreamSelector(selector);
+                if (!added)
+                {
+                    auto network = selector.getNetwork();
+                    auto station = selector.getStation();
+                    auto dataSelector = selector.getSelector();
+                    throw std::invalid_argument(
+                        "Duplicate selector detected for "
+                      + network + " " + station + " " + dataSelector);
+                }
             } // Loop on selectors
         }
     }

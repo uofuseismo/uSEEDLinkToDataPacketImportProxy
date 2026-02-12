@@ -22,6 +22,7 @@ static void msRecordHandler(char *record, int recordLength, void *outputBuffer)
     buffer->append(record, recordLength);
 }
 
+/*
 template<typename T>
 std::vector<T> unpack(const std::string &data)
 {
@@ -68,6 +69,7 @@ std::vector<T> unpack(const std::string &data)
     }   
     return result;
 }
+*/
 
 template<typename T>
 std::string toMiniSEED(
@@ -194,7 +196,7 @@ TEMPLATE_TEST_CASE("USEEDLinkToDataPacketImportProxy::PacketConverter",
     REQUIRE(startTime == startTimeBack);
     if (packet.data_type() == UDataPacketImportAPI::V1::DataType::DATA_TYPE_INTEGER_32)
     {
-        auto samples = ::unpack<int> (packet.data());
+        auto samples = USEEDLinkToDataPacketImportProxy::PacketConverter::unpack<int> (packet.data(), data.size());
         REQUIRE(samples.size() == data.size());
         for (int i = 0; i < static_cast<int> (data.size()); ++i)
         {
@@ -203,7 +205,7 @@ TEMPLATE_TEST_CASE("USEEDLinkToDataPacketImportProxy::PacketConverter",
     } 
     else if (packet.data_type() == UDataPacketImportAPI::V1::DataType::DATA_TYPE_FLOAT)
     {
-        auto samples = ::unpack<float> (packet.data());
+        auto samples = USEEDLinkToDataPacketImportProxy::PacketConverter::unpack<float> (packet.data(), data.size());
         REQUIRE(samples.size() == data.size());
         for (int i = 0; i < static_cast<int> (data.size()); ++i)
         {
@@ -212,7 +214,7 @@ TEMPLATE_TEST_CASE("USEEDLinkToDataPacketImportProxy::PacketConverter",
     }
     else if (packet.data_type() == UDataPacketImportAPI::V1::DataType::DATA_TYPE_DOUBLE)
     {   
-        auto samples = ::unpack<double> (packet.data());
+        auto samples = USEEDLinkToDataPacketImportProxy::PacketConverter::unpack<double> (packet.data(), data.size());
         REQUIRE(samples.size() == data.size());
         for (int i = 0; i < static_cast<int> (data.size()); ++i)
         {

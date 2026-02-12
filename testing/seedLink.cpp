@@ -84,7 +84,7 @@ TEST_CASE("USEEDLinkToDataPacketImportProxy::StreamSelector",
         clientOptions.enableDeleteStateFileOnStop();
         for (const auto &s : selectors)
         {
-            clientOptions.addStreamSelector(s);
+            REQUIRE(clientOptions.addStreamSelector(s));
         }
         REQUIRE(clientOptions.getHost() == host);
         REQUIRE(clientOptions.getPort() == port);
