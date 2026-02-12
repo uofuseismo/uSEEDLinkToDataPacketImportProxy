@@ -3,6 +3,7 @@ module;
 #include <mutex>
 #include <atomic>
 #include <string>
+#include <cmath>
 #include <bit>
 #include <vector>
 #include <map>
@@ -160,16 +161,40 @@ struct WindowedMetrics
         bool wasUpdated{false};
         if (now >= lastUpdate + updateInterval)
         {
-            wasUpdated = true;
-
+            double averageLatency{0};
+            double averageCounts{0};
+            double stdCounts{0};
             {
             std::scoped_lock lock{mMutex};
+            if (samplesCount > 0)
+            {
+                double besselCorrection{1};
+                if (samplesCount > 1)
+                {
+                    besselCorrection = samplesCount/(samplesCount - 1.0);
+                }
+                averageLatency = (sumLatency.count()*1.e-6)/samplesCount; 
+                averageCounts = sum/samplesCount;
+                // Var[x] = E[x^2] - E[x]^2
+                double varianceOfCounts = sumSquared/samplesCount
+                                        - averageCounts*averageCounts;
+                stdCounts = besselCorrection
+                           *std::sqrt(std::max(0.0, varianceOfCounts));
+            }
+//std::cout << averageLatency << " " << averageCounts << " " << stdCounts << std::endl;
+            // Reset sums
             sumLatency = std::chrono::microseconds{0};
             sum = 0;
             sumSquared = 0;
             samplesCount = 0;
             packetsCount = 0;
             }
+            // Update 
+            windowedAverageLatency.store(averageLatency);
+            windowedAverageCounts.store(averageCounts);
+            windowedStdCounts.store(stdCounts);
+            // Note this was updated
+            wasUpdated = true;
         }
         return wasUpdated;
     }
@@ -177,6 +202,16 @@ struct WindowedMetrics
     double getWindowedAverageLatency() const
     {
         return windowedAverageLatency.load();
+    }
+
+    double getWindowedAverageCounts() const
+    {
+        return windowedAverageCounts.load();
+    }
+
+    double getWindowedStdCounts() const
+    {
+        return windowedStdCounts.load();
     }
 
     mutable std::mutex mMutex;
@@ -318,8 +353,39 @@ public:
             auto updated = item.second->updateAndReset(now);
             if (updated)
             {
+                auto averageLatency = item.second->getWindowedAverageLatency();
+                auto averageCounts = item.second->getWindowedAverageCounts();
+                auto stdCounts = item.second->getWindowedStdCounts();
+                // Take advantage of our mutex
+                mAverageLatencyMap.insert_or_assign(item.first, averageLatency);
+                mAverageCountsMap.insert_or_assign(item.first, averageCounts);
+                mStdCountsMap.insert_or_assign(item.first, stdCounts);
             }
         }
+    }
+
+    /// Average latency
+    [[nodiscard]] 
+    std::map<std::string, double> getWindowedAverageLatencies() const
+    {   
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mAverageLatencyMap;
+    }   
+
+    /// Average counts 
+    [[nodiscard]] 
+    std::map<std::string, double> getWindowedAverageCounts() const
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mAverageCountsMap;
+    }
+
+    /// Std counts
+    [[nodiscard]] 
+    std::map<std::string, double> getWindowedStdCounts() const
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mStdCountsMap;
     }
 
     /// Received packets
@@ -435,6 +501,9 @@ private:
     std::map<std::string, int64_t> mExpiredPacketsCounterMap;
     std::map<std::string, int64_t> mFuturePacketsCounterMap;
     std::map<std::string, int64_t> mTotalPacketsCounterMap;
+    std::map<std::string, double> mAverageLatencyMap;
+    std::map<std::string, double> mAverageCountsMap;
+    std::map<std::string, double> mStdCountsMap;
     std::map<std::string, std::unique_ptr<WindowedMetrics>> mWindowedMetricsMap;
     std::atomic<int64_t> mReceivedPacketsCounter{0};
     std::atomic<int64_t> mSentPacketsCounter{0};
