@@ -2,7 +2,7 @@ edition = "2023";
 
 package UDataPacketImportAPI.V1;
 
-import "google/protobuf/empty.proto";
+import "uDataPacketImportAPI/v1/subscription_request.proto";
 import "uDataPacketImportAPI/v1/packet.proto";
 
 /*!
@@ -12,5 +12,5 @@ service Backend {
     /*! 
      * The consumer will receives data from all streams.
      */
-    rpc Subscribe(google.protobuf.Empty) returns(stream Packet) {}; 
+    rpc Subscribe(SubscriptionRequest) returns(stream Packet) {}; 
 }
