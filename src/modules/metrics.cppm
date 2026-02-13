@@ -161,6 +161,7 @@ struct WindowedMetrics
         bool wasUpdated{false};
         if (now >= lastUpdate + updateInterval)
         {
+            lastUpdate = now;
             double averageLatency{0};
             double averageCounts{0};
             double stdCounts{0};
@@ -181,7 +182,7 @@ struct WindowedMetrics
                 stdCounts = besselCorrection
                            *std::sqrt(std::max(0.0, varianceOfCounts));
             }
-//std::cout << averageLatency << " " << averageCounts << " " << stdCounts << std::endl;
+std::cout << averageLatency << " " << averageCounts << " " << stdCounts << std::endl;
             // Reset sums
             sumLatency = std::chrono::microseconds{0};
             sum = 0;
