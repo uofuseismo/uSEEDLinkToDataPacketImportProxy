@@ -194,6 +194,13 @@ TEMPLATE_TEST_CASE("USEEDLinkToDataPacketImportProxy::PacketConverter",
     std::chrono::nanoseconds startTimeBack = seconds + nanoSeconds;
     REQUIRE(std::abs(samplingRate - packet.sampling_rate()) < 1.e-15);
     REQUIRE(startTime == startTimeBack);
+    double referenceSum = std::accumulate(data.begin(), data.end(), 0);
+    double referenceSum2 = std::inner_product(data.begin(), data.end(), data.begin(), 0);
+    double packetSum;
+    double packetSum2;
+    USEEDLinkToDataPacketImportProxy::PacketConverter::computeSumAndSumSquared(packet, &packetSum, &packetSum2);
+    REQUIRE(std::abs(referenceSum - packetSum) < 1.e-14);
+    REQUIRE(std::abs(referenceSum2 - packetSum2) < 1.e-14);
     if (packet.data_type() == UDataPacketImportAPI::V1::DataType::DATA_TYPE_INTEGER_32)
     {
         auto samples = USEEDLinkToDataPacketImportProxy::PacketConverter::unpack<int> (packet.data(), data.size());

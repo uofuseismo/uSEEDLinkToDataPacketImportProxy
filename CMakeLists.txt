@@ -16,7 +16,6 @@ endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
-find_package(TBB REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(libmseed REQUIRED)
 find_package(SEEDLink REQUIRED)

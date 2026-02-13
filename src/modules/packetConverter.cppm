@@ -112,6 +112,132 @@ std::vector<T> unpack(const std::string &data, const int nSamples)
     return unpack<T>(data, nSamples, swapBytes);
 }
 
+template<typename T>
+void computeSumAndSumSquared(const std::string &data,
+                             const int nSamples,
+                             const bool swapBytes,
+                             double *sum,
+                             double *sumSquared)
+{
+#ifndef NDEBUG
+    assert(sum != nullptr);
+    assert(sumSquared != nullptr);
+#endif
+    *sum = 0;
+    *sumSquared = 0;
+    if (nSamples < 1){return;}
+    constexpr auto dataTypeSize = sizeof(T);
+    if (static_cast<size_t> (nSamples)*dataTypeSize != data.size())
+    {
+        throw std::invalid_argument("Unexpected data size");
+    }
+    union CharacterValueUnion
+    {   
+        unsigned char cArray[dataTypeSize];
+        T value;
+    };  
+    double localSum{0};
+    double localSum2{0};
+    CharacterValueUnion cvUnion;
+    if (!swapBytes)
+    {   
+        for (int i = 0; i < nSamples; ++i)
+        {
+            cvUnion.value = data[i];
+            auto i1 = i*dataTypeSize;
+            auto i2 = i1 + dataTypeSize;
+            std::copy(data.data() + i1, data.data() + i2, 
+                      cvUnion.cArray);
+            localSum = localSum + cvUnion.value;
+            localSum2 = localSum2 + cvUnion.value*cvUnion.value;
+        }   
+    }
+    else
+    {   
+        for (int i = 0; i < nSamples; ++i)
+        {   
+            cvUnion.value = data[i];
+            auto i1 = i*dataTypeSize;
+            auto i2 = i1 + dataTypeSize;
+            std::reverse_copy(data.data() + i1, data.data() + i2, 
+                              cvUnion.cArray);
+            localSum = localSum + cvUnion.value;
+            localSum2 = localSum2 + cvUnion.value*cvUnion.value;
+        }   
+    }
+    *sum = localSum;
+    *sumSquared = localSum2;
+}
+
+export
+void computeSumAndSumSquared(const UDataPacketImportAPI::V1::Packet &packet,
+                             const bool swapBytes,
+                             double *sum,
+                             double *sumSquared)
+{
+    double packetSum{0};
+    double packetSumSquared{0};
+    auto dataType = packet.data_type();
+    if (dataType == UDataPacketImportAPI::V1::DataType::DATA_TYPE_INTEGER_32)
+    {
+        computeSumAndSumSquared<int>(packet.data(),
+                                     packet.number_of_samples(),
+                                     swapBytes,
+                                     &packetSum,
+                                     &packetSumSquared);
+
+    }
+    else if (dataType == UDataPacketImportAPI::V1::DataType::DATA_TYPE_INTEGER_64)
+    {
+        computeSumAndSumSquared<int64_t>(packet.data(),
+                                         packet.number_of_samples(),
+                                         swapBytes,
+                                         &packetSum,
+                                         &packetSumSquared);
+    }
+    else if (dataType == UDataPacketImportAPI::V1::DataType::DATA_TYPE_FLOAT)
+    {
+        computeSumAndSumSquared<float>(packet.data(),
+                                       packet.number_of_samples(),
+                                       swapBytes,
+                                       &packetSum,
+                                       &packetSumSquared);
+    }
+    else if (dataType == UDataPacketImportAPI::V1::DataType::DATA_TYPE_DOUBLE)
+    {
+        computeSumAndSumSquared<double>(packet.data(),
+                                        packet.number_of_samples(),
+                                        swapBytes,
+                                        &packetSum,
+                                        &packetSumSquared);
+    }
+    else if (dataType == UDataPacketImportAPI::V1::DataType::DATA_TYPE_TEXT ||
+             dataType == UDataPacketImportAPI::V1::DataType::DATA_TYPE_UNKNOWN)
+    {
+        packetSum = 0;
+        packetSumSquared = 0;
+    }
+    else
+    {
+        throw std::runtime_error("Unhandled data type");
+    }
+    if (sum){*sum = packetSum;}
+    if (sumSquared){*sumSquared = packetSumSquared;} 
+}
+
+export
+void computeSumAndSumSquared(const UDataPacketImportAPI::V1::Packet &packet,
+                             double *sum,
+                             double *sumSquared)
+{
+    const bool swapBytes
+    {
+        std::endian::native == std::endian::little ? false : true
+    };
+    return computeSumAndSumSquared(packet, swapBytes, sum, sumSquared);
+}
+
+
 [[nodiscard]] UDataPacketImportAPI::V1::Packet
     convert(const MS3Record &miniSEEDRecord, const bool swapBytes)
 {

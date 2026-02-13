@@ -82,6 +82,7 @@ export void cleanup()
     opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
 }
 
+/*
 template<typename T>
 void computeSumAndSumSquared(const std::vector<T> &data,
                              double *packetSum,
@@ -102,6 +103,7 @@ void computeSumAndSumSquared(const std::vector<T> &data,
     *packetSum = sum;
     *packetSum2 = sum2;
 }
+*/
 
 struct WindowedMetrics
 {
@@ -115,36 +117,8 @@ struct WindowedMetrics
         namespace UPC = USEEDLinkToDataPacketImportProxy::PacketConverter;
         double packetSum{0};
         double packetSum2{0};
-        if (packet.data_type() == UDP::DATA_TYPE_INTEGER_32)
-        {
-            auto data
-                = UPC::unpack<int32_t>(packet.data(), nSamples, swapBytes); 
-            computeSumAndSumSquared(data, &packetSum, &packetSum2);
-        }
-        else if (packet.data_type() == UDP::DATA_TYPE_INTEGER_64)
-        {
-            auto data
-                = UPC::unpack<int64_t>(packet.data(), nSamples, swapBytes);
-            computeSumAndSumSquared(data, &packetSum, &packetSum2);
-        }
-        else if (packet.data_type() == UDP::DATA_TYPE_FLOAT)
-        {
-            auto data
-                = UPC::unpack<float>(packet.data(), nSamples, swapBytes);
-            computeSumAndSumSquared(data, &packetSum, &packetSum2);
-        }
-        else if (packet.data_type() == UDP::DATA_TYPE_DOUBLE)
-        {
-            auto data
-                = UPC::unpack<double>(packet.data(), nSamples, swapBytes);
-            computeSumAndSumSquared(data, &packetSum, &packetSum2);
-        }
-        else
-        {
-            if (packet.data_type() == UDP::DATA_TYPE_UNKNOWN){return;}
-            if (packet.data_type() == UDP::DATA_TYPE_TEXT){return;}
-            throw std::invalid_argument("Unhandled data type");
-        }
+        USEEDLinkToDataPacketImportProxy::PacketConverter::
+            computeSumAndSumSquared(packet, swapBytes, &packetSum, &packetSum2);
         // Update sums
         {
         std::scoped_lock{mMutex};
