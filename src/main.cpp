@@ -35,6 +35,13 @@ opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
     totalPacketsReceivedCounter;
 opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
     totalPacketsSentCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    windowedAverageLatencyGauge;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    windowedAverageCountsGauge;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    windowedStdCountsGauge;
+
 
 class Process
 {
@@ -70,7 +77,7 @@ public:
             auto meter = provider->GetMeter(mOptions.applicationName, "1.2.0");
 
             namespace UMetrics = USEEDLinkToDataPacketImportProxy::Metrics;
-            // Good packets
+            // Valid (good) packets
             validPacketsReceivedCounter
                 = meter->CreateInt64ObservableCounter(
                     "seismic_data.import.seedlink.client.packets.valid",
@@ -95,7 +102,7 @@ public:
                    "{packets}");
             expiredPacketsReceivedCounter->AddCallback(
                 UMetrics::observeExpiredPacketsReceived, nullptr);
-            // Total packets
+            // Total packets received
             totalPacketsReceivedCounter
                 = meter->CreateInt64ObservableCounter(
                     "seismic_data.import.seedlink.client.packets.all",
@@ -111,7 +118,30 @@ public:
                     "{packets}");
             totalPacketsSentCounter->AddCallback(
                 UMetrics::observeTotalPacketsSent, nullptr);
-
+            // Windowed average latency
+            windowedAverageLatencyGauge
+                = meter->CreateDoubleObservableGauge(
+                    "seismic_data.import.seedlink.client.windowed.latency.average",
+                    "The windowed average latency of packets.",
+                    "{s}");
+            windowedAverageLatencyGauge->AddCallback(
+                UMetrics::observeWindowedAverageLatency, nullptr);
+            // Windowed average counts
+            windowedAverageCountsGauge
+                = meter->CreateDoubleObservableGauge(
+                    "seismic_data.import.seedlink.client.windowed.counts.average",
+                    "The windowed average number of counts.",
+                    "{counts}");
+            windowedAverageCountsGauge->AddCallback(
+                UMetrics::observeWindowedAverageCounts, nullptr);
+            // Windowed std of counts
+            windowedStdCountsGauge
+                = meter->CreateDoubleObservableGauge(
+                    "seismic_data.import.seedlink.client.windowed.counts.standard_deviaton",
+                    "The windowed standard deviation of counts.",
+                    "{counts}");
+            windowedStdCountsGauge->AddCallback(
+                UMetrics::observeWindowedStdCounts, nullptr);
         }
     }
 
@@ -125,8 +155,11 @@ public:
         //stop();
         std::this_thread::sleep_for(std::chrono::milliseconds {10});
         mKeepRunning.store(true);
-        mFutures.push_back(
-            std::async(&Process::updateWindowedMetrics, this));
+        if (mOptions.exportMetrics)
+        {
+            mFutures.push_back(
+                std::async(&Process::updateWindowedMetrics, this));
+        }
         mFutures.push_back(
             std::async(&Process::tabulateMetricsAndPropagatePackets, this));
         mFutures.push_back(std::async(&Process::sendPacketsToProxy, this));
@@ -264,6 +297,7 @@ public:
         auto &metrics
             = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
                                                        ::getInstance();
+        metrics.setUpdateInterval(mOptions.windowedMetricsUpdateInterval);
         constexpr std::chrono::seconds timeOut{1};       
         while (mKeepRunning.load())
         {

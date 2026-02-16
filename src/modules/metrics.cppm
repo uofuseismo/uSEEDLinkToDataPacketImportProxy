@@ -107,6 +107,17 @@ void computeSumAndSumSquared(const std::vector<T> &data,
 
 struct WindowedMetrics
 {
+    WindowedMetrics() = default;
+    explicit WindowedMetrics(const std::chrono::seconds &inputUpdateInterval) :
+        updateInterval(inputUpdateInterval)
+    {
+#ifndef NDEBUG
+        assert(updateInterval.count() > 0);
+#endif
+        windowedAverageLatency.store( 
+            static_cast<double> (updateInterval.count()));
+    }
+
     void update(const UDataPacketImportAPI::V1::Packet &packet,
                 const std::chrono::microseconds &packetEndTime)
     {
@@ -123,7 +134,7 @@ struct WindowedMetrics
         {
         std::scoped_lock{mMutex};
         sum = sum + packetSum;
-        sumSquared = sumSquared + packetSum;
+        sumSquared = sumSquared + packetSum2;
         samplesCount = samplesCount + nSamples;
         packetsCount = packetsCount + 1;
         sumLatency = sumLatency + packetEndTime;
@@ -136,7 +147,8 @@ struct WindowedMetrics
         if (now >= lastUpdate + updateInterval)
         {
             lastUpdate = now;
-            double averageLatency{0};
+            double averageLatency
+               = static_cast<double> (updateInterval.count());
             double averageCounts{0};
             double stdCounts{0};
             {
@@ -156,7 +168,6 @@ struct WindowedMetrics
                 stdCounts = besselCorrection
                            *std::sqrt(std::max(0.0, varianceOfCounts));
             }
-std::cout << averageLatency << " " << averageCounts << " " << stdCounts << std::endl;
             // Reset sums
             sumLatency = std::chrono::microseconds{0};
             sum = 0;
@@ -197,7 +208,10 @@ std::cout << averageLatency << " " << averageCounts << " " << stdCounts << std::
         ((std::chrono::high_resolution_clock::now()).time_since_epoch())
     };
     std::chrono::microseconds sumLatency{0};
-    std::atomic<double> windowedAverageLatency{0};
+    std::atomic<double> windowedAverageLatency
+    {
+        static_cast<double> (updateInterval.count())
+    };
     std::atomic<double> windowedAverageCounts{0};
     std::atomic<double> windowedStdCounts{0};
     double sum{0};
@@ -303,7 +317,7 @@ public:
         auto idx = mWindowedMetricsMap.find(key);
         if (idx == mWindowedMetricsMap.end())
         {
-            auto metrics = std::make_unique<WindowedMetrics> ();
+            auto metrics = std::make_unique<WindowedMetrics> (mUpdateInterval);
             metrics->update(packet, 
                             std::chrono::microseconds {endTimeMicroSeconds});
             mWindowedMetricsMap.insert( std::pair{key, std::move(metrics)} );     
@@ -468,6 +482,14 @@ public:
         return mReceivedPacketsCounter.load();
     }   
 
+    void setUpdateInterval(const std::chrono::seconds &interval)
+    {
+        if (interval.count() <= 0)
+        {
+            throw std::invalid_argument("Update interval must be positive");
+        }
+        mUpdateInterval = interval;
+    }
 private:
     MetricsSingleton() = default;
     ~MetricsSingleton() = default;
@@ -482,6 +504,7 @@ private:
     std::map<std::string, std::unique_ptr<WindowedMetrics>> mWindowedMetricsMap;
     std::atomic<int64_t> mReceivedPacketsCounter{0};
     std::atomic<int64_t> mSentPacketsCounter{0};
+    std::chrono::seconds mUpdateInterval{UPDATE_INTERVAL_SECONDS};
     std::chrono::microseconds mMaximumLatency{std::chrono::days {180}};
     std::chrono::microseconds mMaximumFutureTime{0};
 };
@@ -707,6 +730,140 @@ export void observeTotalPacketsSent(
     }   
 }
 
+export void observeWindowedAverageLatency(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<double>
+            >
+        > (observerResult))
+    {
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<double>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto map = instance.getWindowedAverageLatencies();
+            for (const auto &item : map)
+            {
+                try
+                {
+                    auto key = item.first;
+                    auto value = item.second;
+                    std::map<std::string, std::string>
+                        attribute{ {"stream", item.first} };
+                    observer->Observe(value, attribute);
+                }
+                catch (...) //const std::exception &e) 
+                {
+                    //spdlog::warn(e.what());
+                }
+            }
+        }
+        catch (...)
+        {
+        }
+    }
+}
+
+export void observeWindowedAverageCounts(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<double>
+            >
+        > (observerResult))
+    {   
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<double>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto map = instance.getWindowedAverageCounts();
+            for (const auto &item : map)
+            {
+                try
+                {
+                    auto key = item.first;
+                    auto value = item.second;
+                    std::map<std::string, std::string>
+                        attribute{ {"stream", item.first} };
+                    observer->Observe(value, attribute);
+                }
+                catch (...) //const std::exception &e) 
+                {
+                    //spdlog::warn(e.what());
+                }
+            }
+        }
+        catch (...)
+        {
+        }
+    }
+}
+
+export void observeWindowedStdCounts(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<double>
+            >
+        > (observerResult))
+    {
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<double>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto map = instance.getWindowedStdCounts();
+            for (const auto &item : map)
+            {
+                try
+                {
+                    auto key = item.first;
+                    auto value = item.second;
+                    std::map<std::string, std::string>
+                        attribute{ {"stream", item.first} };
+                    observer->Observe(value, attribute);
+                }
+                catch (...) //const std::exception &e) 
+                {
+                    //spdlog::warn(e.what());
+                }
+            }
+        }
+        catch (...)
+        {
+        }
+    }
+}
 
 
 }

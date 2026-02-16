@@ -46,6 +46,7 @@ export struct ProgramOptions
     USEEDLinkToDataPacketImportProxy::SEEDLinkClientOptions
         seedLinkClientOptions;
     std::chrono::seconds printSummaryInterval{3600};
+    std::chrono::seconds windowedMetricsUpdateInterval{120};
     std::vector<std::chrono::seconds> retrySchedule
     {
         std::chrono::seconds {1},
@@ -403,6 +404,18 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
     {   
         options.exportMetrics = true;
         options.otelHTTPMetricsOptions = metricsOptions;
+        auto updateInterval
+            = static_cast<int> (options.windowedMetricsUpdateInterval.count());
+        updateInterval
+            = propertyTree.get<int> (
+                 "OTelTTPMetricsOptions.windowedMetricsUpdateIntervalInSeconds",
+                 updateInterval);
+        if (updateInterval <= 0)
+        {
+            throw std::invalid_argument("Metrics update interval must be non-negative");
+        }
+        options.windowedMetricsUpdateInterval
+             = std::chrono::seconds {updateInterval};
     } 
 
     // Logging

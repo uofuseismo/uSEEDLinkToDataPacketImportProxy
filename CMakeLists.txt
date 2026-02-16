@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uSEEDLinkToDataPacketImportProxy VERSION 0.0.1 LANGUAGES CXX)
+project(uSEEDLinkToDataPacketImportProxy VERSION 0.0.2 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
