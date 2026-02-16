@@ -571,7 +571,7 @@ int main(int argc, char *argv[])
         setenv("OTEL_SERVICE_NAME",
                programOptions.applicationName.c_str(),
                overwrite);
-     }
+    }
 
     auto logger
         = USEEDLinkToDataPacketImportProxy::Logger::initialize(programOptions);
