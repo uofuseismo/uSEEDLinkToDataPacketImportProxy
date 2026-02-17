@@ -48,7 +48,11 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
-          name: "Create docker image"
+          name: "Quay login"
+          command: |
+            docker login -u="${QUAY_ROBOT_USER}" -p="${QUAY_ROBOT_PASSWORD}" quay.io
+      - run:
+          name: "Create docker and upload image"
           command: |
             #ls /tmp/workspace/
             cd /tmp/workspace
@@ -58,17 +62,14 @@ jobs:
             version=$(echo ${tarFile} | sed 's/uSEEDLinkToDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
             #echo ${version}
             docker build -t useedlinktodatapacketimportproxy:${version} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.deb .
-            docker tag useedlinktodatapacketimportproxy:${version} quay.io/uuss/useedlinktodatapacketimportproxy
-      - run:
-          name: "Quay login"
-          command: |
-            docker login -u="${QUAY_ROBOT_USER}" -p="${QUAY_ROBOT_PASSWORD}" quay.io
-      - run:
-          name: "Upload docker image to quay"
-          command: |
-            #docker tag useedlinktodatapacketimportproxy quay.io/uuss/useedlinktodatapacketimportproxy
-            docker push quay.io/uuss/useedlinktodatapacketimportproxy
-
+            docker tag useedlinktodatapacketimportproxy:${version} quay.io/uuss/useedlinktodatapacketimportproxy:${version}
+            docker push quay.io/uuss/useedlinktodatapacketimportproxy:${version}
+      #- run:
+      #    name: "Upload docker image to quay"
+      #    command: |
+      #      #docker tag useedlinktodatapacketimportproxy quay.io/uuss/useedlinktodatapacketimportproxy
+      #    
+      #      docker push quay.io/uuss/useedlinktodatapacketimportproxy
     # End steps
   # End deploy job
 
