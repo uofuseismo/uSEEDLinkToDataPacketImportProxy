@@ -170,7 +170,7 @@ public:
     void stop()
     {
         mKeepRunning.store(false);
-        mSEEDLinkClient->stop();
+        if (mSEEDLinkClient){mSEEDLinkClient->stop();}
         for (auto &future : mFutures)
         {
             if (future.valid()){future.get();}
