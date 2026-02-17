@@ -119,7 +119,7 @@ struct WindowedMetrics
     }
 
     void update(const UDataPacketImportAPI::V1::Packet &packet,
-                const std::chrono::microseconds &packetEndTime)
+                const std::chrono::microseconds &packetLatency)
     {
         auto nSamples = packet.number_of_samples();
         if (nSamples < 1){return;}
@@ -137,7 +137,7 @@ struct WindowedMetrics
         sumSquared = sumSquared + packetSum2;
         samplesCount = samplesCount + nSamples;
         packetsCount = packetsCount + 1;
-        sumLatency = sumLatency + packetEndTime;
+        sumLatency = sumLatency + packetLatency;
         }
     }
 
@@ -160,7 +160,7 @@ struct WindowedMetrics
                 {
                     besselCorrection = samplesCount/(samplesCount - 1.0);
                 }
-                averageLatency = (sumLatency.count()*1.e-6)/samplesCount; 
+                averageLatency = (sumLatency.count()*1.e-6)/packetsCount;
                 averageCounts = sum/samplesCount;
                 // Var[x] = E[x^2] - E[x]^2
                 double varianceOfCounts = sumSquared/samplesCount
@@ -311,6 +311,9 @@ public:
             return;
         }
         // This is a typical good packet, tabulate metrics
+        auto latency
+            = std::max(std::chrono::microseconds {0},
+                       now - std::chrono::microseconds{endTimeMicroSeconds} );
         incrementReceivedPacketsCounter(key);
         {
         std::lock_guard<std::mutex> lock(mMutex);
@@ -318,14 +321,12 @@ public:
         if (idx == mWindowedMetricsMap.end())
         {
             auto metrics = std::make_unique<WindowedMetrics> (mUpdateInterval);
-            metrics->update(packet, 
-                            std::chrono::microseconds {endTimeMicroSeconds});
+            metrics->update(packet, latency);
             mWindowedMetricsMap.insert( std::pair{key, std::move(metrics)} );     
         }
         else
         {
-            idx->second->update(packet,
-                                std::chrono::microseconds {endTimeMicroSeconds});
+            idx->second->update(packet, latency);
         }
         }
     }

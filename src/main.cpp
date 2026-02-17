@@ -328,6 +328,7 @@ public:
     /// Thread that tabulates metrics and forwards packets to outbound queue
     void tabulateMetricsAndPropagatePackets()
     {
+        auto exportMetrics = mOptions.exportMetrics;
         constexpr std::chrono::milliseconds timeOut{15};
         auto &metrics
             = USEEDLinkToDataPacketImportProxy::Metrics::MetricsSingleton
@@ -340,8 +341,11 @@ public:
             {
                 try
                 {
-                    metrics.incrementReceivedPacketsCounter();
-                    metrics.tabulateMetrics(packet);
+                    if (exportMetrics)
+                    {
+                        metrics.incrementReceivedPacketsCounter();
+                        metrics.tabulateMetrics(packet);
+                    }
                 }
                 catch (const std::exception &e)
                 {
