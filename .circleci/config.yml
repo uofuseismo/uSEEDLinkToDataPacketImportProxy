@@ -50,14 +50,15 @@ jobs:
       - run:
           name: "Create docker image"
           command: |
-            ls /tmp/workspace/
+            #ls /tmp/workspace/
             cd /tmp/workspace
-            ls
+            #ls
             # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.tar.gz
             tarFile=$(ls *Linux.tar.gz)
             version=$(echo ${tarFile} | sed 's/uSEEDLinkToDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
-            echo ${version}
+            #echo ${version}
             docker build -t useedlinktodatapacketimportproxy:${version} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.deb .
+            docker tag useedlinktodatapacketimportproxy:${version} quay.io/uuss/useedlinktodatapacketimportproxy
       - run:
           name: "Quay login"
           command: |
@@ -65,7 +66,7 @@ jobs:
       - run:
           name: "Upload docker image to quay"
           command: |
-            docker tag useedlinktodatapacketimportproxy quay.io/uuss/useedlinktodatapacketimportproxy
+            #docker tag useedlinktodatapacketimportproxy quay.io/uuss/useedlinktodatapacketimportproxy
             docker push quay.io/uuss/useedlinktodatapacketimportproxy
 
     # End steps
