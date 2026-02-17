@@ -3,6 +3,7 @@ project(uSEEDLinkToDataPacketImportProxy VERSION 0.0.3 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
+option(BUILD_FOR_DEBIAN "Build the debian container" ON)
 
 configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
                ${CMAKE_SOURCE_DIR}/src/version.hpp)

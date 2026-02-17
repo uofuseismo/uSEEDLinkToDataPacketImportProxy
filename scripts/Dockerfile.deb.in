@@ -4,6 +4,7 @@
 #        buildah bud -t useedlinktodatapacketimportproxy:latest -f Dockerfile.deb
 FROM ubuntu:24.04
 COPY @PROJECT_NAME@-@PROJECT_VERSION@-Linux.tar.gz .
+LABEL version="@PROJECT_VERSION@"
 RUN apt-get update &&\ 
     apt-get upgrade -y &&\ 
     apt-get autoremove -y &&\ 
