@@ -98,7 +98,7 @@ std::shared_ptr<grpc::Channel>
             SPDLOG_LOGGER_INFO(logger,
                                "Recreating secure channel without API key to {}",
                                address);
-         }
+        }
         grpc::SslCredentialsOptions sslOptions;
         sslOptions.pem_root_certs = *serverCertificate;
         return grpc::CreateChannel(address,
