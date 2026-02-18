@@ -296,16 +296,16 @@ public:
         auto now 
             = std::chrono::duration_cast<std::chrono::microseconds>
               ((std::chrono::high_resolution_clock::now()).time_since_epoch());
-        auto startValidTime = now.count() - mMaximumLatency.count();
-        auto endValidTime = now.count() + mMaximumFutureTime.count();
+        auto validStartTimeMuS = now.count() - mMaximumLatency.count();
+        auto validEndTimeMuS = now.count() + mMaximumFutureTime.count();
         // Future
-        if (endTimeMicroSeconds > endValidTime)
+        if (endTimeMicroSeconds > validEndTimeMuS)
         {
             incrementFuturePacketsCounter(key);
             return;
         }
         // Historical
-        else if (startTimeMicroSeconds < startValidTime)
+        else if (startTimeMicroSeconds < validStartTimeMuS)
         {
             incrementExpiredPacketsCounter(key);
             return;
