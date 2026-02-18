@@ -441,38 +441,36 @@ public:
     {
         SPDLOG_LOGGER_DEBUG(mLogger, "Main thread entering waiting loop");
         catchSignals();
+        while (!mStopRequested)
         {
-            while (!mStopRequested)
+            if (mInterrupted)
             {
-                if (mInterrupted)
-                {
-                    SPDLOG_LOGGER_INFO(mLogger,
-                                       "SIGINT/SIGTERM signal received!");
-                    mStopRequested = true;
-                    mShutdownRequested = true;
-                    mShutdownCondition.notify_all();
-                    break;
-                }
-                if (!checkFuturesOkay(std::chrono::milliseconds {5}))
-                {
-                    SPDLOG_LOGGER_CRITICAL(
-                       mLogger,
-                       "Futures exception caught; terminating app");
-                    mStopRequested = true;
-                    mShutdownRequested = true;
-                    mShutdownCondition.notify_all();
-                    break;
-                }
-                printSummary();
-                std::unique_lock<std::mutex> lock(mStopMutex);
-                mStopCondition.wait_for(lock,
-                                        std::chrono::milliseconds {100},
-                                        [this]
-                                        {
-                                              return mStopRequested;
-                                        });
-                lock.unlock();
+                SPDLOG_LOGGER_INFO(mLogger,
+                                   "SIGINT/SIGTERM signal received!");
+                mStopRequested = true;
+                mShutdownRequested = true;
+                mShutdownCondition.notify_all();
+                break;
             }
+            if (!checkFuturesOkay(std::chrono::milliseconds {5}))
+            {
+                SPDLOG_LOGGER_CRITICAL(
+                   mLogger,
+                   "Futures exception caught; terminating app");
+                mStopRequested = true;
+                mShutdownRequested = true;
+                mShutdownCondition.notify_all();
+                break;
+            }
+            printSummary();
+            std::unique_lock<std::mutex> lock(mStopMutex);
+            mStopCondition.wait_for(lock,
+                                    std::chrono::milliseconds {100},
+                                    [this]
+                                    {
+                                          return mStopRequested;
+                                    });
+            lock.unlock();
         }
         if (mStopRequested)
         {
