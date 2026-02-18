@@ -211,20 +211,25 @@ public:
 #endif
         constexpr std::chrono::milliseconds timeOut{10};
         auto retrySchedule = mOptions.retrySchedule; 
-        for (int kRetry = 0;
+        for (int kRetry =-1;
              kRetry < static_cast<int> (retrySchedule.size());
              ++kRetry)
         {
-            std::unique_lock<std::mutex> lock(mShutdownMutex);
-            mShutdownCondition.wait_for(lock,
-                                        retrySchedule.at(kRetry),
-                                        [this]
-                                        {
-                                            return mShutdownRequested;
-                                        });
-            lock.unlock();
+            bool isRetry{false};
             if (!mKeepRunning){break;}
-            bool isRetry = kRetry > 0 ? true : false;
+            if (kRetry >= 0)
+            {
+                isRetry = true;
+                std::unique_lock<std::mutex> lock(mShutdownMutex);
+                mShutdownCondition.wait_for(lock,
+                                            retrySchedule.at(kRetry),
+                                            [this]
+                                            {
+                                                return mShutdownRequested;
+                                            });
+                lock.unlock();
+                if (!mKeepRunning){break;}
+            }
             auto [status, hadSuccessfulWrite]
                 = USEEDLinkToDataPacketImportProxy::PacketWriter::
                      publishSynchronously(mOptions.grpcOptions,
@@ -233,6 +238,7 @@ public:
                                           &mExportQueue, //ImportQueue,
                                           &mKeepRunning,
                                           mLogger);
+            if (hadSuccessfulWrite){kRetry =-1;}
             // Handle the return codes
             if (status.ok())
             {
@@ -435,8 +441,7 @@ public:
         }
     } 
 
-    // Calling thread from Run gets stuck here then fails through to
-    // destructor
+    // Let main thread handle signals from OS and deal with exceptions
     void handleMainThread()
     {
         SPDLOG_LOGGER_DEBUG(mLogger, "Main thread entering waiting loop");
