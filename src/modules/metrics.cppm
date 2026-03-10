@@ -132,7 +132,7 @@ struct WindowedMetrics
             computeSumAndSumSquared(packet, swapBytes, &packetSum, &packetSum2);
         // Update sums
         {
-        std::scoped_lock{mMutex};
+        std::scoped_lock lock{mMutex};
         sum = sum + packetSum;
         sumSquared = sumSquared + packetSum2;
         samplesCount = samplesCount + nSamples;

@@ -50,7 +50,7 @@ public:
     /// @brief Sets the client's key.  This is private - e.g., localhost.key.
     void setClientKey(const std::string &key);
     /// @result The client key.
-    /// @note The client key must also be set for gRPC to use this.
+    /// @note The client certificate must also be set for gRPC to use this.
     [[nodiscard]] std::optional<std::string> getClientKey() const noexcept;
 
     /// @brief Destructor
