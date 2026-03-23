@@ -111,6 +111,8 @@ void StreamSelector::setSelector(
    const StreamSelector::Type type)
 {
     pImpl->mChannel = channel;
+    std::transform(pImpl->mChannel.begin(), pImpl->mChannel.end(),
+                   pImpl->mChannel.begin(), ::toupper);
     pImpl->mLocationCode.clear();
     pImpl->mType = type;
 }
