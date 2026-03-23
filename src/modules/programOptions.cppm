@@ -174,6 +174,7 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
             // UU.FORK.HH?.01 | UU.CTU.EN?.01 | ....
             for (const auto &thisSplitSelector : splitSelectors)
             {
+                /*
                 std::vector<std::string> thisSelector;
                 auto splitSelector = thisSplitSelector;
                 boost::algorithm::trim(splitSelector);
@@ -228,6 +229,8 @@ getSEEDLinkOptions(const boost::property_tree::ptree &propertyTree,
                     // TODO other data types
                 }
                 selector.setSelector(channel, locationCode, dataType);
+                */
+                auto selector = StreamSelector::fromString(thisSplitSelector);
                 auto added = clientOptions.addStreamSelector(selector);
                 if (!added)
                 {

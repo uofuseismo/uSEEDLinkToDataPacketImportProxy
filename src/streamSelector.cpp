@@ -1,3 +1,4 @@
+#include <boost/algorithm/string.hpp>
 #ifndef NDEBUG
 #include <cassert>
 #endif
@@ -120,6 +121,8 @@ void StreamSelector::setSelector(
     const StreamSelector::Type type)
 {
     pImpl->mChannel = channel;
+    std::transform(pImpl->mChannel.begin(), pImpl->mChannel.end(),
+                   pImpl->mChannel.begin(), ::toupper);
     pImpl->mLocationCode = locationCode;
     pImpl->mType = type;
 }
@@ -239,3 +242,75 @@ std::string StreamSelector::getSelector() const
     }
     return selector; 
 } 
+
+StreamSelector StreamSelector::fromString(
+    const std::string &streamSelector)
+{
+    std::vector<std::string> thisSelector; 
+    auto splitSelector = streamSelector;
+    boost::algorithm::trim(splitSelector);
+
+    // Need to preprocess selector so there's no double spaces
+    for (int k = 1; k < static_cast<int> (splitSelector.size()); )
+    {
+        if (splitSelector[k - 1] == splitSelector[k] &&
+            splitSelector[k] == ' ') 
+        {
+            splitSelector.erase(k, 1);
+        }
+        else
+        {
+            ++k;
+        }
+    }
+
+    boost::split(thisSelector, splitSelector,
+                 boost::is_any_of(" \t"));
+    StreamSelector selector;
+    if (splitSelector.empty())
+    {
+        throw std::invalid_argument("Empty selector");
+    }
+
+    // Require a network
+    auto network = thisSelector.at(0);
+    boost::algorithm::trim(network);
+    selector.setNetwork(network);
+    // Add a station?
+    if (splitSelector.size() > 1) 
+    {
+        auto station = thisSelector.at(1);
+        boost::algorithm::trim(station);
+        selector.setStation(station);
+    }
+    // Add channel + location code + data type
+    std::string channel{"*"};
+    std::string locationCode{"??"};
+    if (splitSelector.size() > 2) 
+    {
+        channel = thisSelector[2];
+        boost::algorithm::trim(channel);
+    }
+    if (splitSelector.size() > 3) 
+    {
+        locationCode = thisSelector[3];
+        boost::algorithm::trim(locationCode);
+    }
+    // Data type
+    auto dataType = StreamSelector::Type::All;
+    if (thisSelector.size() > 4) 
+    {
+        boost::algorithm::trim(thisSelector.at(4));
+        if (thisSelector.at(4) == "D" || thisSelector.at(4) == "d")
+        {
+            dataType = StreamSelector::Type::Data;
+        }
+        else if (thisSelector.at(4) == "A" || thisSelector.at(4) == "a") 
+        {
+            dataType  = StreamSelector::Type::All;
+        }
+        // TODO other data types
+    }
+    selector.setSelector(channel, locationCode, dataType);
+    return selector;
+}

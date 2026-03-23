@@ -33,6 +33,14 @@ TEST_CASE("USEEDLinkToDataPacketImportProxy::StreamSelector",
         selector.setSelector("", "01", USD::StreamSelector::Type::Data);
         REQUIRE(selector.getSelector() == "01*.D");
     }
+    SECTION("From String")
+    {
+        auto streamSelector
+           = USD::StreamSelector::fromString(" UU bhu  hH?  01 d ");
+        REQUIRE(streamSelector.getNetwork() == "UU");
+        REQUIRE(streamSelector.getStation() == "BHU");
+        REQUIRE(streamSelector.getSelector() == "01HH?.D");
+    }
 }
 
 TEST_CASE("USEEDLinkToDataPacketImportProxy::StreamSelector",

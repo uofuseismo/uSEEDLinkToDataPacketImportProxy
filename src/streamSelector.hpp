@@ -91,6 +91,14 @@ public:
     ~StreamSelector();
     /// @}
 
+    /// @brief Creats a stream selector from a string like UU FORK HHZ 01 D.
+    /// @param[in] streamString  The stream string in a format like:
+    ///                          UU FORK 
+    ///                          UU FORK EHZ ** D
+    /// @result The corresponding stream selector.
+    [[nodiscard]] static StreamSelector fromString(const std::string &streamString);
+
+
     /// @name Operators
     /// @{
 
