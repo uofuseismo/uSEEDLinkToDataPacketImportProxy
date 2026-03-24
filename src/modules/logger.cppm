@@ -71,8 +71,6 @@ export std::shared_ptr<spdlog::logger>
     }
     else
     {
-        auto consoleSink
-            = std::make_shared<spdlog::sinks::stdout_color_sink_mt> ();
         logger
             = std::make_shared<spdlog::logger>
               (spdlog::logger ("", {consoleSink}));
