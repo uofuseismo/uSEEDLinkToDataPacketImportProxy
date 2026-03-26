@@ -216,10 +216,12 @@ bool SEEDLinkClientOptions::addStreamSelector(
             dataSelector == mySelector.getSelector())
         {
             return false;
+/*
             throw std::invalid_argument("Duplicate selector for "
                                       + network + " "
                                       + station + " "
                                       + dataSelector);
+*/
         }
     }
     pImpl->mSelectors.push_back(selector);
