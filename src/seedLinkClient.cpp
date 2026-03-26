@@ -1,4 +1,7 @@
 #include <iostream>
+#ifndef NDEBUG
+#include <cassert>
+#endif
 #include <libslink.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
