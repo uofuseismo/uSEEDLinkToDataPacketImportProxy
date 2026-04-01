@@ -88,14 +88,18 @@ public:
     void setRunning(const bool running)
     {
         // Terminate the session
-        if (!running && mKeepRunning)
+        if (!running && mKeepRunning.load())
         {
             SPDLOG_LOGGER_DEBUG(mLogger, "Issuing terminate command");
+            // Tell the scraping thread to quit if it hasn't already given up
+            // because it received a terminate request
+            mKeepRunning.store(running);
             terminate();
         }
-        // Tell the scraping thread to quit if it hasn't already given up
-        // because it received a terminate request
-        mKeepRunning = running;
+        else
+        {
+            mKeepRunning.store(running);
+        }
     }
     /// Stops the service
     void stop()
