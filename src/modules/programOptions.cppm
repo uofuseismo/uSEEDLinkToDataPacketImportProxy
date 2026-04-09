@@ -21,6 +21,22 @@ namespace USEEDLinkToDataPacketImportProxy
 
 #define APPLICATION_NAME "uSEEDLinkToDataPacketImportProxy"
 
+export struct OTelGRPCMetricsOptions
+{
+    std::string url{"localhost:4317"};
+    std::chrono::milliseconds exportInterval{std::chrono::seconds {15}};
+    std::chrono::milliseconds exportTimeOut{500};
+    std::filesystem::path certificatePath; // Path to the cert file
+};
+
+export struct OTelGRPCLogOptions
+{
+    std::string url{"localhost:4317"};
+    std::chrono::milliseconds exportTimeOut{500};
+    std::filesystem::path certificatePath; // Path to the cert file
+};
+ 
+
 export struct OTelHTTPMetricsOptions
 {
     std::string url{"localhost:4318"};
@@ -41,6 +57,8 @@ export struct ProgramOptions
     std::string applicationName{APPLICATION_NAME};
     OTelHTTPMetricsOptions otelHTTPMetricsOptions;
     OTelHTTPLogOptions otelHTTPLogOptions;
+    OTelGRPCMetricsOptions otelGRPCMetricsOptions;
+    OTelGRPCLogOptions otelGRPCLogOptions;
     GRPCOptions grpcOptions;
     //UDataPacketImportProxy::ProxyOptions proxyOptions;
     USEEDLinkToDataPacketImportProxy::SEEDLinkClientOptions
@@ -58,6 +76,8 @@ export struct ProgramOptions
     int verbosity{3};
     bool exportLogs{false};
     bool exportMetrics{false};
+    bool exportLogsWithHTTP{true};
+    bool exportMetricsWithHTTP{true};
 };
 
 /// Read the program options from the command line
