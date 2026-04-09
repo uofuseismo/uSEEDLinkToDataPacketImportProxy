@@ -10,7 +10,7 @@ jobs:
       - run:
           name: "Configure code"
           command: |
-            cmake -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DBUILD_FOR_DEBIAN=ON
+            cmake -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DBUILD_CONTAINER=ON
       - run:
           name: "Build the code"
           command: |
@@ -29,14 +29,14 @@ jobs:
              cpack -B /tmp/artifacts TGZ
              rm -rf /tmp/artifacts/_CPack_Packages
              cp /tmp/artifacts/*-Linux.tar.gz /tmp/workspace/
-             cp Dockerfile.deb /tmp/workspace/
+             cp Dockerfile.u24 /tmp/workspace/
              ls /tmp/workspace/
       - store_artifacts:
           path: /tmp/artifacts
       - persist_to_workspace:
           root: /tmp/workspace
           paths:
-            - Dockerfile.deb
+            - Dockerfile.u24
             - uSEEDLinkToDataPacketImportProxy-*
   # End compile job
   deploy-job:
@@ -61,7 +61,7 @@ jobs:
             tarFile=$(ls *Linux.tar.gz)
             version=$(echo ${tarFile} | sed 's/uSEEDLinkToDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
             #echo ${version}
-            docker build -t useedlinktodatapacketimportproxy:${version} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.deb .
+            docker build -t useedlinktodatapacketimportproxy:${version} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.u24 .
             docker tag useedlinktodatapacketimportproxy:${version} quay.io/uuss/useedlinktodatapacketimportproxy:${version}
             docker push quay.io/uuss/useedlinktodatapacketimportproxy:${version}
       #- run:

@@ -3,7 +3,9 @@ project(uSEEDLinkToDataPacketImportProxy VERSION 0.0.7 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
-option(BUILD_FOR_DEBIAN "Build the debian container" ON)
+option(BUILD_CONTAINER "Build the deploy container" ON)
+option(BUILD_TESTS "Compile unit tests" ON)
+option(WITH_CONAN "Deals with wonkiness with the OTel libraries and Conan" OFF)
 
 configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
                ${CMAKE_SOURCE_DIR}/src/version.hpp)
@@ -28,7 +30,9 @@ find_package(opentelemetry-cpp REQUIRED)
 find_package(TBB COMPONENTS tbb REQUIRED)
 find_package(Boost COMPONENTS program_options REQUIRED)
 find_package(Threads REQUIRED)
-find_package(Catch2)
+if (${BUILD_TESTS})
+   find_package(Catch2 REQUIRED)
+endif()
 
 set(PROTO_SRC
     uDataPacketImportAPI/v1/data_type.proto
@@ -81,12 +85,30 @@ target_link_libraries(libuSEEDLinkToDataPacketImportProxy
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
-                              opentelemetry-cpp::otlp_http_log_record_exporter
-                              opentelemetry-cpp::otlp_http_metric_exporter
                               spdlog::spdlog_header_only
                               Boost::headers
                               Boost::program_options
                               Threads::Threads)
+if (${WITH_CONAN})
+   target_link_libraries(libuSEEDLinkToDataPacketImportProxy
+                         PRIVATE opentelemetry-cpp::opentelemetry-cpp
+                                 opentelemetry-cpp::proto_grpc
+                                 opentelemetry-cpp::exporter_otlp_grpc
+                                 opentelemetry-cpp::exporter_otlp_grpc_client
+                                 opentelemetry-cpp::exporter_otlp_grpc_metrics
+                                 opentelemetry-cpp::exporter_otlp_http
+                                 opentelemetry-cpp::exporter_otlp_http_client
+                                 opentelemetry-cpp::exporter_otlp_http_metric
+                                 opentelemetry-cpp::exporter_otlp_http_log
+                                 opentelemetry-cpp::metrics
+                                 opentelemetry-cpp::common
+                                 opentelemetry-cpp::api)
+   target_compile_definitions(uDataPacketToDatabase PRIVATE WITH_OTLP_GRPC)
+else()
+   target_link_libraries(libuSEEDLinkToDataPacketImportProxy
+                         PRIVATE opentelemetry-cpp::otlp_http_log_record_exporter
+                                 opentelemetry-cpp::otlp_http_metric_exporter)
+endif()
 target_sources(libuSEEDLinkToDataPacketImportProxy
                PUBLIC FILE_SET
                       HEADERS
@@ -144,32 +166,35 @@ target_link_libraries(uSEEDLinkToDataPacketImportProxy
 #                                         Tests                                          #
 ##########################################################################################
 
-add_executable(unitTests
-               testing/packetConverter.cpp
-               testing/seedLink.cpp
-               testing/grpc.cpp
-               )
-set_target_properties(unitTests PROPERTIES
-                      CXX_STANDARD 20
-                      CXX_STANDARD_REQUIRED YES 
-                      CXX_EXTENSIONS NO) 
-target_link_libraries(unitTests
-                      PUBLIC
-                         TBB::tbb
-                      PRIVATE  
-                         uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
-                         gRPC::grpc
-                         gRPC::grpc++
-                         #gRPC::grpcpp_otel_plugin
-                         SEEDLink::SEEDLink
-                         mseed::mseed
-                         Threads::Threads
-                         Catch2::Catch2 Catch2::Catch2WithMain)
-target_include_directories(unitTests
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
-add_test(NAME unitTests 
-         COMMAND unitTests)
+if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
+   message("Will build unit tests")
+   add_executable(unitTests
+                  testing/packetConverter.cpp
+                  testing/seedLink.cpp
+                  testing/grpc.cpp
+                  )
+   set_target_properties(unitTests PROPERTIES
+                         CXX_STANDARD 20
+                         CXX_STANDARD_REQUIRED YES 
+                         CXX_EXTENSIONS NO) 
+   target_link_libraries(unitTests
+                         PUBLIC
+                            TBB::tbb
+                         PRIVATE  
+                            uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
+                            gRPC::grpc
+                            gRPC::grpc++
+                            #gRPC::grpcpp_otel_plugin
+                            SEEDLink::SEEDLink
+                            mseed::mseed
+                            Threads::Threads
+                            Catch2::Catch2 Catch2::Catch2WithMain)
+   target_include_directories(unitTests
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
+   add_test(NAME unitTests 
+            COMMAND $<TARGET_FILE:unitTests>)
+endif()
 
 ##########################################################################################
 #                                      Installation                                      #
@@ -205,22 +230,22 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/uSEEDLinkToDataPacketImportProxyConfig
 #                                        Containers                                      #
 ##########################################################################################
 include(CPackComponent)
-if (${BUILD_FOR_DEBIAN})
-   message("Will configure debian container")
-   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.deb.in
-                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.deb @ONLY)
-   add_custom_target(${PROJECT_NAME}-deb
-                     COMMENT "Creating deb file for ${PROJECT_NAME}"
+if (${BUILD_CONTAINER})
+   message("Will configure Ubuntu24 container")
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.u24.in
+                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.u24 @ONLY)
+   add_custom_target(${PROJECT_NAME}-u24
+                     COMMENT "Creating u24 file for ${PROJECT_NAME}"
                      COMMAND ${CMAKE_CPACK_COMMAND} -G DEB
                      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-   add_dependencies(${PROJECT_NAME}-deb uSEEDLinkToDataPacketImportProxy libuSEEDLinkToDataPacketImportProxy)
+   add_dependencies(${PROJECT_NAME}-u24 uSEEDLinkToDataPacketImportProxy libuSEEDLinkToDataPacketImportProxy)
    find_program(buildah_EXECUTABLE buildah)
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
                         COMMENT "Preparing the container with buildah"
-                        COMMAND ${buildah_EXECUTABLE} bud -t useedlinktodatapacketimportproxy:${PROJECT_VERSION} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.deb
+                        COMMAND ${buildah_EXECUTABLE} bud -t useedlinktodatapacketimportproxy:${PROJECT_VERSION} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.u24
                         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-      add_dependencies(buildah ${PROJECT_NAME}-deb)
+      add_dependencies(buildah ${PROJECT_NAME}-u24)
    endif()
 endif()
 
@@ -258,7 +283,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
    if (RPMBUILD_PROGRAM)
       list(APPEND CPACK_GENERATOR RPM)
    endif()
-   #if (${BUILD_FOR_DEBIAN})
+   #if (${BUILD_CONTAINER})
    #   find_program(DPKG_PROGRAM dpkg REQUIRED)
    #else()
    #   find_program(DPKG_PROGRAM dpkg)

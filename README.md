@@ -12,3 +12,11 @@ To update the proto files use
 
     git subtree pull --prefix uDataPacketImportAPI https://github.com/uofuseismo/uDataPacketImportAPI.git main --squash
 
+# Conan
+
+    conan install . --build=missing -s build_type=Release -pr:a=Linux-x86_64-clang-21 --output-folder ./conanBuild
+    cmake --preset conan-release -DWITH_CONAN=ON -DBUILD_CONTAINER=ON
+    cmake --build --preset conan-release
+    ctest --preset conan-release
+    cmake --install conanBuild/build/Release
+

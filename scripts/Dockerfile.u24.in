@@ -1,7 +1,7 @@
 # Purpose: Creates the container for running the uSEEDLinkToDataPacketImportProxy
 #          software in a Ubuntu container.
-# Usage: podman build -t useedlinktodatapacketimportproxy:latest -f Dockerfile.deb
-#        buildah bud -t useedlinktodatapacketimportproxy:latest -f Dockerfile.deb
+# Usage: podman build -t useedlinktodatapacketimportproxy:latest -f Dockerfile.u24
+#        buildah bud -t useedlinktodatapacketimportproxy:latest -f Dockerfile.u24
 FROM ubuntu:24.04
 COPY @PROJECT_NAME@-@PROJECT_VERSION@-Linux.tar.gz .
 LABEL version="@PROJECT_VERSION@"
