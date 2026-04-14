@@ -103,7 +103,7 @@ if (${WITH_CONAN})
                                  opentelemetry-cpp::metrics
                                  opentelemetry-cpp::common
                                  opentelemetry-cpp::api)
-   target_compile_definitions(uDataPacketToDatabase PRIVATE WITH_OTLP_GRPC)
+   target_compile_definitions(libuSEEDLinkToDataPacketImportProxy PRIVATE WITH_OTLP_GRPC)
 else()
    target_link_libraries(libuSEEDLinkToDataPacketImportProxy
                          PRIVATE opentelemetry-cpp::otlp_http_log_record_exporter
@@ -153,14 +153,33 @@ target_link_libraries(uSEEDLinkToDataPacketImportProxy
                          uSEEDLinkToDataPacketImportProxy::libuSEEDLinkToDataPacketImportProxy
                          gRPC::grpc
                          gRPC::grpc++
-                         opentelemetry-cpp::otlp_http_log_record_exporter
-                         opentelemetry-cpp::otlp_http_metric_exporter
                          spdlog::spdlog_header_only
                          SEEDLink::SEEDLink
                          mseed::mseed
                          Boost::headers
                          Boost::program_options
                          Threads::Threads)
+if (${WITH_CONAN})
+   target_link_libraries(uSEEDLinkToDataPacketImportProxy
+                         PRIVATE opentelemetry-cpp::opentelemetry-cpp
+                                 opentelemetry-cpp::proto_grpc
+                                 opentelemetry-cpp::exporter_otlp_grpc
+                                 opentelemetry-cpp::exporter_otlp_grpc_client
+                                 opentelemetry-cpp::exporter_otlp_grpc_metrics
+                                 opentelemetry-cpp::exporter_otlp_http
+                                 opentelemetry-cpp::exporter_otlp_http_client
+                                 opentelemetry-cpp::exporter_otlp_http_metric
+                                 opentelemetry-cpp::exporter_otlp_http_log
+                                 opentelemetry-cpp::metrics
+                                 opentelemetry-cpp::common
+                                 opentelemetry-cpp::api)
+   target_compile_definitions(uSEEDLinkToDataPacketImportProxy PRIVATE WITH_OTLP_GRPC)
+else()
+   target_link_libraries(uSEEDLinkToDataPacketImportProxy
+                         PRIVATE opentelemetry-cpp::otlp_http_log_record_exporter
+                                 opentelemetry-cpp::otlp_http_metric_exporter)
+endif()
+
 
 ##########################################################################################
 #                                         Tests                                          #
