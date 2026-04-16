@@ -227,13 +227,13 @@ struct WindowedMetrics
 [[nodiscard]] 
 std::string toKeyName(const UDataPacketImportAPI::V1::StreamIdentifier &identifier)
 {
-     auto network = identifier.network();
+     const auto &network = identifier.network();
      if (network.empty()){throw std::runtime_error("Network is empty");}
-     auto station = identifier.station();
+     const auto &station = identifier.station();
      if (station.empty()){throw std::runtime_error("Station is empty");}
-     auto channel = identifier.channel();
+     const auto &channel = identifier.channel();
      if (channel.empty()){throw std::runtime_error("Channel is empty");}
-     auto locationCode = identifier.location_code();
+     const auto &locationCode = identifier.location_code();
 
      auto result = network + "_"
                  + station + "_"
