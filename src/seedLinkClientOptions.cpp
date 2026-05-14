@@ -8,7 +8,7 @@ using namespace USEEDLinkToDataPacketImportProxy;
 class SEEDLinkClientOptions::SEEDLinkClientOptionsImpl
 {
 public:
-    std::string mHost{"rtserve.iris.washington.edu"};
+    std::string mHost{"rtserve.earthscope.org"};
     std::filesystem::path mStateFile;
     std::vector<StreamSelector> mSelectors;
     std::chrono::seconds mNetworkTimeOut{300};

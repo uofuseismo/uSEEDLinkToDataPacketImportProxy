@@ -66,7 +66,7 @@ TEST_CASE("USEEDLinkToDataPacketImportProxy::StreamSelector",
     USD::SEEDLinkClientOptions clientOptions;
     SECTION("Defaults")
     {
-        REQUIRE(clientOptions.getHost() == "rtserve.iris.washington.edu");
+        REQUIRE(clientOptions.getHost() == "rtserve.earthscope.org");
         REQUIRE(clientOptions.getPort() == 18000);
         REQUIRE(clientOptions.getNetworkReconnectDelay() == std::chrono::seconds {30});
         REQUIRE(clientOptions.getNetworkTimeOut() == std::chrono::seconds {300});

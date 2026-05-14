@@ -53,7 +53,7 @@ public:
     /// @param[in] host  The address of the SEEDLink server.
     void setHost(const std::string &host);
     /// @result The hots address of the SEEDLink server.  By default this is
-    ///         rtserve.iris.washington.edu
+    ///         rtserve.earthscope.org
     [[nodiscard]] std::string getHost() const noexcept;
 
     /// @brief Sets the port number of the SEEDLink server.
