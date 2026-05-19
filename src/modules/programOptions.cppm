@@ -419,6 +419,14 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
     {   
         throw std::invalid_argument("maximumExportQueueSize must be positive");
     }
+    auto summaryIntervalInMinutes
+        = static_cast<int> (options.printSummaryInterval.count());
+    summaryIntervalInMinutes
+        = propertyTree.get<int> ("General.printSummaryIntervalInMinutes",
+                                 summaryIntervalInMinutes);
+    options.printSummaryInterval 
+        = std::chrono::minutes {summaryIntervalInMinutes};
+
 
     // Metrics
     OTelHTTPMetricsOptions metricsOptions;
