@@ -7,9 +7,6 @@ option(BUILD_CONTAINER "Build the deploy container" ON)
 option(BUILD_TESTS "Compile unit tests" ON)
 option(WITH_CONAN "Deals with wonkiness with the OTel libraries and Conan" OFF)
 
-configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
-               ${CMAKE_SOURCE_DIR}/src/version.hpp)
-
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
@@ -33,6 +30,26 @@ find_package(Threads REQUIRED)
 if (${BUILD_TESTS})
    find_package(Catch2 REQUIRED)
 endif()
+
+find_package(Git)
+if (Git_FOUND)
+   execute_process(
+     COMMAND ${GIT_EXECUTABLE} --no-pager log -n 1 HEAD "--pretty=format:%h"
+     OUTPUT_VARIABLE uSEEDLinkToDataPacketImportProxy_GITTAG
+     RESULT_VARIABLE gitresult
+     ERROR_QUIET
+     OUTPUT_STRIP_TRAILING_WHITESPACE
+   )   
+   if (gitresult EQUAL 0)
+      message(STATUS "Last Git commit: ${uSEEDLinkToDataPacketImportProxy_GITTAG}")
+   endif()
+else()
+   set(uSEEDLinkToDataPacketImportProxy_GITTAG "") 
+endif()
+
+configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
+               ${CMAKE_SOURCE_DIR}/src/version.hpp)
+
 
 set(PROTO_SRC
     uDataPacketImportAPI/v1/data_type.proto
