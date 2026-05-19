@@ -44,7 +44,7 @@ jobs:
           cache-name: cache-conan-modules
         with:
           path: ~/.conan2
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('./conanfile.py') }}
+          key: ${{ matrix.distro }}-${{ matrix.arch }}-build-${{ env.cache-name }}-${{ hashFiles('./conanfile.py') }}
 
       # Cache hit
       - if: ${{ steps.cache-conan.outputs.cache-hit == 'true' }}
@@ -68,7 +68,7 @@ jobs:
         uses: actions/cache@v5
         id: cache-libmseed-libslink
         env:
-          cache-name: cache-libmseed-libslink-modules
+          cache-name: cache-libmseed-libslink-libraries
         with:
           path: |
              ${HOME}/third-party/include/libmseed.h
@@ -76,9 +76,10 @@ jobs:
              ${HOME}/third-party/lib/cmake/libmseed/*
              ${HOME}/third-party/lib/libmseed.a
              ${HOME}/third-party/lib/libslink.a
+         key: ${{ matrix.distro }}-${{ matrix.arch }}-build-${{ env.cache-name }}
 
       - if: ${{ steps.cache-libmseed-libslink.outputs.cache-hit != 'true' }}
-        name: Build libmseed, libdali, and libslink
+        name: Build libmseed and libslink
         run: |
           mkdir -p ${HOME}/third-party
           wget https://github.com/EarthScope/libmseed/archive/refs/tags/v3.4.0.tar.gz
