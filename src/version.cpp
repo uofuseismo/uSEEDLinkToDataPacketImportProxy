@@ -1,5 +1,5 @@
 #include <string>
-#include "version.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/version.hpp"
 
 using namespace USEEDLinkToDataPacketImportProxy;
 
