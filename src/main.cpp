@@ -598,10 +598,7 @@ int main(int argc, char *argv[])
         SPDLOG_LOGGER_CRITICAL(logger,
                                "Failed to initialize metrics because {}",
                                std::string {e.what()});
-        if (programOptions.exportLogs)
-        {   
-            USEEDLinkToDataPacketImportProxy::Logger::cleanup();
-        }
+        USEEDLinkToDataPacketImportProxy::Logger::cleanup();
         return EXIT_FAILURE;
     }   
 
@@ -610,27 +607,15 @@ int main(int argc, char *argv[])
     {
         ::Process process(programOptions, logger);
         process.start();
-        if (programOptions.exportMetrics)
-        {
-            USEEDLinkToDataPacketImportProxy::Metrics::cleanup();
-        } 
-        if (programOptions.exportLogs)
-        {
-            USEEDLinkToDataPacketImportProxy::Logger::cleanup();
-        }
+        USEEDLinkToDataPacketImportProxy::Metrics::cleanup();
+        USEEDLinkToDataPacketImportProxy::Logger::cleanup();
     }
     catch (const std::exception &e)
     {
         SPDLOG_LOGGER_CRITICAL(logger, "Main process failed with {}",
                                std::string {e.what()});
-        if (programOptions.exportMetrics)
-        {
-            USEEDLinkToDataPacketImportProxy::Metrics::cleanup();
-        }
-        if (programOptions.exportLogs)
-        {
-            USEEDLinkToDataPacketImportProxy::Logger::cleanup();
-        }
+        USEEDLinkToDataPacketImportProxy::Metrics::cleanup();
+        USEEDLinkToDataPacketImportProxy::Logger::cleanup();
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

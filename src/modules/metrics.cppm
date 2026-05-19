@@ -17,6 +17,10 @@ module;
 #include <opentelemetry/exporters/otlp/otlp_http_metric_exporter_options.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader_factory.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader_options.h>
+#ifdef WITH_OTLP_GRPC
+#include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter_factory.h>
+#include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter_options.h>
+#endif
 #include <opentelemetry/sdk/metrics/meter_context.h>
 #include <opentelemetry/sdk/metrics/meter_context_factory.h>
 #include <opentelemetry/sdk/metrics/meter_provider.h>
@@ -34,8 +38,120 @@ import PacketConverter;
 namespace USEEDLinkToDataPacketImportProxy::Metrics
 {
 
+bool metricsInitialized{false};
+
 #define UPDATE_INTERVAL_SECONDS 120
 
+void initializeHTTP(
+    const bool exportMetrics,
+    // NOLINTNEXTLINE(misc-include-cleaner)
+    const OTelHTTPMetricsOptions &otelHTTPMetricsOptions)
+{
+    if (!exportMetrics){return;}
+    namespace otel = opentelemetry;
+    otel::exporter::otlp::OtlpHttpMetricExporterOptions exporterOptions;
+    exporterOptions.url = otelHTTPMetricsOptions.url
+                        + otelHTTPMetricsOptions.suffix;
+    //exporterOptions.console_debug = debug != "" && debug != "0" && debug != "no";
+    exporterOptions.content_type
+        = otel::exporter::otlp::HttpRequestContentType::kBinary;
+
+    auto exporter
+        = otel::exporter::otlp::OtlpHttpMetricExporterFactory::Create(
+             exporterOptions);
+    // Initialize and set the global MeterProvider
+    otel::sdk::metrics::PeriodicExportingMetricReaderOptions readerOptions;
+    readerOptions.export_interval_millis
+        = otelHTTPMetricsOptions.exportInterval;
+    readerOptions.export_timeout_millis
+        = otelHTTPMetricsOptions.exportTimeOut;
+
+    auto reader
+        = otel::sdk::metrics::PeriodicExportingMetricReaderFactory::Create(
+             std::move(exporter),
+             readerOptions);
+
+    auto context = otel::sdk::metrics::MeterContextFactory::Create();
+    context->AddMetricReader(std::move(reader));
+
+    auto metricsProvider
+        = otel::sdk::metrics::MeterProviderFactory::Create(
+             std::move(context));
+
+    const std::shared_ptr<otel::metrics::MeterProvider>
+        provider(std::move(metricsProvider));
+    otel::sdk::metrics::Provider::SetMeterProvider(provider);
+    metricsInitialized = true;
+}
+
+#ifdef WITH_OTLP_GRPC
+void initializeGRPC(
+    const bool exportMetrics,
+    // NOLINTNEXTLINE(misc-include-cleaner)
+    const OTelGRPCMetricsOptions &otelGRPCMetricsOptions)
+{
+    if (!exportMetrics){return;}
+    namespace otel = opentelemetry;
+    otel::exporter::otlp::OtlpGrpcMetricExporterOptions exporterOptions;
+    exporterOptions.endpoint = otelGRPCMetricsOptions.url;
+    exporterOptions.use_ssl_credentials = false;
+    if (!otelGRPCMetricsOptions.certificatePath.empty())
+    {
+        exporterOptions.use_ssl_credentials = true;
+        exporterOptions.ssl_credentials_cacert_path
+           = otelGRPCMetricsOptions.certificatePath;
+    }
+    auto exporter
+        = otel::exporter::otlp::OtlpGrpcMetricExporterFactory::Create(
+             exporterOptions);
+
+    // Initialize and set the global MeterProvider
+    otel::sdk::metrics::PeriodicExportingMetricReaderOptions readerOptions;
+    readerOptions.export_interval_millis
+        = otelGRPCMetricsOptions.exportInterval;
+    readerOptions.export_timeout_millis
+        = otelGRPCMetricsOptions.exportTimeOut;
+
+    auto reader
+        = otel::sdk::metrics::PeriodicExportingMetricReaderFactory::Create(
+             std::move(exporter),
+             readerOptions);
+
+    auto context = otel::sdk::metrics::MeterContextFactory::Create();
+    context->AddMetricReader(std::move(reader));
+
+    auto metricsProvider
+        = otel::sdk::metrics::MeterProviderFactory::Create(
+             std::move(context));
+
+    const std::shared_ptr<otel::metrics::MeterProvider>
+        provider(std::move(metricsProvider));
+    otel::sdk::metrics::Provider::SetMeterProvider(provider);
+    metricsInitialized = true;
+}
+#endif
+
+export void initialize(
+    // NOLINTNEXTLINE(misc-include-cleaner)
+    const USEEDLinkToDataPacketImportProxy::ProgramOptions &options)
+{
+    if (options.exportMetricsWithHTTP)
+    {   
+        return initializeHTTP(options.exportMetrics,
+                              options.otelHTTPMetricsOptions);
+    }   
+    else
+    {   
+#ifdef WITH_OTLP_GRPC
+        return initializeGRPC(options.exportMetrics,
+                              options.otelGRPCMetricsOptions);
+#else
+        throw std::runtime_error("Recompile with Conan and OTLP_GRPC");
+#endif
+    }   
+}
+
+/*
 export void initialize(
     const USEEDLinkToDataPacketImportProxy::ProgramOptions &programOptions)
 {
@@ -75,12 +191,24 @@ export void initialize(
 
     otel::sdk::metrics::Provider::SetMeterProvider(provider);
 }
+*/
 
+export void cleanup()
+{
+    if (metricsInitialized)
+    {   
+        const std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
+        opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
+    }   
+    metricsInitialized = false;
+}
+/*
 export void cleanup()
 {
     std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
     opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
 }
+*/
 
 /*
 template<typename T>
