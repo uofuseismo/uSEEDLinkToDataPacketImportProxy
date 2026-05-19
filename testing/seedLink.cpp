@@ -3,8 +3,8 @@
 #ifndef NDEBUG
 #include <cassert>
 #endif
-#include "seedLinkClientOptions.hpp"
-#include "streamSelector.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClientOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/streamSelector.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>

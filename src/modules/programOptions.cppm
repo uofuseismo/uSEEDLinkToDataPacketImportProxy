@@ -10,9 +10,9 @@ module;
 #include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
-#include "grpcOptions.hpp"
-#include "seedLinkClientOptions.hpp"
-#include "streamSelector.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/grpcOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClientOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/streamSelector.hpp"
 
 export module ProgramOptions;
 

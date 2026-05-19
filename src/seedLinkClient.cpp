@@ -6,10 +6,10 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <google/protobuf/util/time_util.h>
-#include "seedLinkClient.hpp"
-#include "seedLinkClientOptions.hpp"
-#include "streamSelector.hpp"
-#include "version.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClient.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClientOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/streamSelector.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/version.hpp"
 #include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 

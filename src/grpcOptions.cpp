@@ -1,7 +1,7 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
-#include "grpcOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/grpcOptions.hpp"
 
 using namespace USEEDLinkToDataPacketImportProxy;
 

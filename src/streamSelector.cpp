@@ -2,7 +2,7 @@
 #ifndef NDEBUG
 #include <cassert>
 #endif
-#include "streamSelector.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/streamSelector.hpp"
 
 
 using namespace USEEDLinkToDataPacketImportProxy;

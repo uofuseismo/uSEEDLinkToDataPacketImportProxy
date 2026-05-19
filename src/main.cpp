@@ -12,8 +12,8 @@
 #include <opentelemetry/metrics/provider.h>
 #include <uDataPacketImportAPI/v1/packet.pb.h>
 #include <uDataPacketImportAPI/v1/frontend.grpc.pb.h>
-#include "seedLinkClient.hpp"
-#include "seedLinkClientOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClient.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClientOptions.hpp"
 
 import ProgramOptions;
 import PacketWriter;

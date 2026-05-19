@@ -13,7 +13,7 @@ module;
 #endif
 #include <tbb/concurrent_queue.h>
 #include "uDataPacketImportAPI/v1/frontend.grpc.pb.h"
-#include "grpcOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/grpcOptions.hpp"
 
 export module PacketWriter;
 import Metrics;

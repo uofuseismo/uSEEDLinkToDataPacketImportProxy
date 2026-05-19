@@ -1,7 +1,7 @@
 #include <filesystem>
 #include <string>
-#include "seedLinkClientOptions.hpp"
-#include "streamSelector.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/seedLinkClientOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/streamSelector.hpp"
 
 using namespace USEEDLinkToDataPacketImportProxy;
 

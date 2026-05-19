@@ -51,7 +51,7 @@ else()
 endif()
 
 configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
-               ${CMAKE_SOURCE_DIR}/src/version.hpp)
+               ${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/version.hpp)
 
 
 set(PROTO_SRC
@@ -69,13 +69,12 @@ set(LIBRARY_SRC
     src/seedLinkClient.cpp
     src/version.cpp
     ${PROTO_SRC})
-set(HEADER_FILES
-    src/grpcOptions.hpp
-    src/seedLinkClient.hpp
-    src/seedLinkClientOptions.hpp
-    src/streamSelector.hpp
-    src/seedLinkClient.hpp
-    src/version.hpp)
+set(LIBRARY_HEADER_FILES
+    include/${PROJECT_NAME}/grpcOptions.hpp
+    include/${PROJECT_NAME}/seedLinkClient.hpp
+    include/${PROJECT_NAME}/seedLinkClientOptions.hpp
+    include/${PROJECT_NAME}/streamSelector.hpp
+    include/${PROJECT_NAME}/version.hpp)
 set(MODULE_FILES
     src/modules/logger.cppm
     src/modules/metrics.cppm
@@ -133,9 +132,10 @@ target_sources(libuSEEDLinkToDataPacketImportProxy
                PUBLIC FILE_SET
                       HEADERS
                       BASE_DIRS
-                         src
+                         include
+                         ${CMAKE_CURRENT_BINARY_DIR}/include
                       FILES
-                         ${HEADER_FILES}
+                         ${LIBRARY_HEADER_FILES}
                PUBLIC FILE_SET
                       CXX_MODULES
                       BASE_DIRS
