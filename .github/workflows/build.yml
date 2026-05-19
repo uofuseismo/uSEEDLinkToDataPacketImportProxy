@@ -1,0 +1,110 @@
+name: uSEEDLinkToDataPacketImportProxy Application
+run-name: Pipeline for branch ${{ github.ref_name }}
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_NAME: uSEEDLinkToDataPacketImportProxy
+  CONTAINER_NAME: useedlinktodatapacketimportproxy
+  QUAY_DIRECTORY: useedlinktodatapacketimportproxy
+  BUILD_TYPE: Release
+  CXX: /usr/bin/clang++
+  CC: /usr/bin/clang
+
+jobs:
+  build:
+    runs-on: ${{ matrix.distro }}
+    strategy:
+      fail-fast: false
+      matrix:
+        #distro: [ubuntu-24.04, ubuntu-24.04-arm]
+        distro: [ubuntu-24.04]
+        arch: [x86]
+        BUILD_TARGET: [Release]
+    name: Build for ${{ matrix.distro }} ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v6
+      # Trick next step - python checkout wants a requirements.txt file
+      - run: touch requirements.txt
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+      - run: pip install conan
+
+      - name: Conan cache setup
+        uses: actions/cache@v5
+        id: cache-conan
+        env:
+          cache-name: cache-conan-modules
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('./conanfile.py') }}
+
+      # Cache hit
+      - if: ${{ steps.cache-conan.outputs.cache-hit == 'true' }}
+        name: Cache hit - list the existing Conan modules
+        continue-on-error: true
+        run: |
+          ls ~/.conan2/
+          ls ~/.conan2/p
+
+      - name: Create default profile with Ninja generator
+        run: |
+          conan profile detect -f
+          echo "" >> ~/.conan2/profiles/default
+          echo "[conf]" >> ~/.conan2/profiles/default
+          echo "tools.cmake.cmaketoolchain:generator=Ninja" >> ~/.conan2/profiles/default
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare-environment
+
+      - name: Get libslink/libmseed
+        uses: ./.github/actions/get-mseed-seedlink
+
+      - name: Install Conan dependencies
+        working-directory: ${{github.workspace}}
+        run: "conan install . --build=missing -s:a build_type=${{env.BUILD_TYPE}} -s:a compiler=clang -s:a compiler.version=20 -s:a compiler.cppstd=23 -s:a compiler.libcxx=libstdc++11 --output-folder ."
+
+      - name: Configure preset and build
+        working-directory: ${{github.workspace}}
+        run: |
+           cmake --preset conan-release -DWITH_CONAN=ON -DBUILD_CONTAINER=ON -DBUILD_TESTS=ON
+           cmake --build --preset conan-release
+           cp include/${PROJECT_NAME}/version.hpp build
+           cp CMakeUserPresets.json build
+
+      - name: Upload build directory
+        uses: ./.github/actions/upload-build-directory
+
+  test:
+    needs: build
+    runs-on: ${{ matrix.distro }}
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu-24.04]
+        arch: [x86]
+    name: Test on ${{ matrix.distro }} ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare test environment
+        uses: ./.github/actions/prepare-environment
+
+      - name: Download build directory
+        uses: ./.github/actions/download-build-directory
+
+      - name: Run unit tests for release
+        working-directory: ${{github.workspace}}
+        run: |
+          mv build/version.hpp include/${PROJECT_NAME}/
+          mv build/CMakeUserPresets.json ./
+          ctest --preset conan-release --verbose
+

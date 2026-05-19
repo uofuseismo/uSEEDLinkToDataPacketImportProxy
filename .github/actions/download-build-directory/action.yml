@@ -1,0 +1,17 @@
+name: download-build-directory
+description: Downloads the archive and unpacks build directory with the tar command to preserve file permissions
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: build-dir
+
+    - name: Create build directory
+      run: mkdir -p ${{github.workspace}}/build
+      shell: bash
+
+    - name: Unpack build directory
+      run: |
+        tar -xf build-dir.tar -C ${{github.workspace}}/build
+      shell: bash
