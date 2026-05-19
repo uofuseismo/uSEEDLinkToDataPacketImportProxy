@@ -15,7 +15,6 @@ runs:
            ${HOME}/third-party/lib/cmake/libmseed/*
            ${HOME}/third-party/lib/libmseed.a
            ${HOME}/third-party/lib/libslink.a
-      shell: bash
 
     - if: ${{ steps.cache-libmseed-libslink.outputs.cache-hit != 'true' }}
       name: Build libmseed, libdali, and libslink
@@ -40,7 +39,6 @@ runs:
         cp libslink.h ${HOME}/third-party/include/
         cd ../
         rm -rf libslink-4.2.0
-      shell: bash
 
     - name: Copy libslink/libmseed.a
       run: |
