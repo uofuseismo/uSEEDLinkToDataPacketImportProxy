@@ -15,6 +15,29 @@
 
 import PacketConverter;
 
+namespace
+{
+
+/// Logger for seedlink
+std::shared_ptr<spdlog::logger> mGlobalLogger{nullptr};
+void seedLinkToSPDLOG(const char *message)
+{
+    if (mGlobalLogger && message)
+    {
+        SPDLOG_LOGGER_INFO(mGlobalLogger, "SEEDLink message: {}", message);
+    }
+}
+
+void seedLinkDiagnosticsToSPDLOG(const char *message)
+{
+    if (mGlobalLogger && message)
+    {
+        SPDLOG_LOGGER_DEBUG(mGlobalLogger, "SEEDLink message: {}", message);
+    }
+}
+
+}
+
 using namespace USEEDLinkToDataPacketImportProxy;
 
 class SEEDLinkClient::SEEDLinkClientImpl
@@ -32,6 +55,7 @@ public:
         {
             mLogger = spdlog::stdout_color_st("seedLinkConsole");
         }
+        mGlobalLogger = mLogger;
         initialize(options);
     }        
     /// Destructor
@@ -39,6 +63,7 @@ public:
     {
         stop();
         disconnect();
+        mGlobalLogger = nullptr;
     }
     /// Terminate the SEED link client connection
     void disconnect()
@@ -119,6 +144,12 @@ public:
         {                   
             throw std::runtime_error("Failed to create client handle");
         }
+        // Setup a better logger
+        void (*logPrint)(const char *)  = seedLinkToSPDLOG;
+        void (*diagPrint)(const char *) = seedLinkDiagnosticsToSPDLOG;
+        sl_loginit_r(mSEEDLinkConnection, 2,
+                     logPrint, nullptr,
+                     diagPrint, nullptr);
         // Set the connection string            
         auto host = options.getHost();
         auto port = options.getPort();

@@ -14,6 +14,7 @@
 #include <uDataPacketImportAPI/v1/frontend.grpc.pb.h>
 #include "uSEEDLinkToDataPacketImportProxy/seedLinkClient.hpp"
 #include "uSEEDLinkToDataPacketImportProxy/seedLinkClientOptions.hpp"
+#include "uSEEDLinkToDataPacketImportProxy/version.hpp"
 
 import ProgramOptions;
 import PacketWriter;
@@ -582,6 +583,9 @@ int main(int argc, char *argv[])
 
     auto logger
         = USEEDLinkToDataPacketImportProxy::Logger::initialize(programOptions);
+    SPDLOG_LOGGER_INFO(logger,
+        "Program version {}", 
+        USEEDLinkToDataPacketImportProxy::Version::getVersionWithTag());
     // Initialize the metrics singleton
     USEEDLinkToDataPacketImportProxy::Metrics::initializeMetricsSingleton();
 
