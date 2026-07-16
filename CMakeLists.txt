@@ -270,21 +270,21 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/uSEEDLinkToDataPacketImportProxyConfig
 ##########################################################################################
 include(CPackComponent)
 if (${BUILD_CONTAINER})
-   message("Will configure Ubuntu24 container")
-   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.u24.in
-                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.u24 @ONLY)
-   add_custom_target(${PROJECT_NAME}-u24
-                     COMMENT "Creating u24 file for ${PROJECT_NAME}"
+   message("Will configure Ubuntu26 container")
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.u26.in
+                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.u26 @ONLY)
+   add_custom_target(${PROJECT_NAME}-u26
+                     COMMENT "Creating u26 file for ${PROJECT_NAME}"
                      COMMAND ${CMAKE_CPACK_COMMAND} -G DEB
                      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-   add_dependencies(${PROJECT_NAME}-u24 uSEEDLinkToDataPacketImportProxy libuSEEDLinkToDataPacketImportProxy)
+   add_dependencies(${PROJECT_NAME}-u26 uSEEDLinkToDataPacketImportProxy libuSEEDLinkToDataPacketImportProxy)
    find_program(buildah_EXECUTABLE buildah)
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
                         COMMENT "Preparing the container with buildah"
-                        COMMAND ${buildah_EXECUTABLE} bud -t useedlinktodatapacketimportproxy:${PROJECT_VERSION} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.u24
+                        COMMAND ${buildah_EXECUTABLE} bud -t useedlinktodatapacketimportproxy:${PROJECT_VERSION} -t useedlinktodatapacketimportproxy:latest -f ./Dockerfile.u26
                         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-      add_dependencies(buildah ${PROJECT_NAME}-u24)
+      add_dependencies(buildah ${PROJECT_NAME}-u26)
    endif()
 endif()
 

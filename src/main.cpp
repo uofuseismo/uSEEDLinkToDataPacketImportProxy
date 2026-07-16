@@ -584,7 +584,7 @@ int main(int argc, char *argv[])
     auto logger
         = USEEDLinkToDataPacketImportProxy::Logger::initialize(programOptions);
     SPDLOG_LOGGER_INFO(logger,
-        "Program version {}", 
+        "Running version {} of uSEEDLinkToDataPacketImportProxy", 
         USEEDLinkToDataPacketImportProxy::Version::getVersionWithTag());
     // Initialize the metrics singleton
     USEEDLinkToDataPacketImportProxy::Metrics::initializeMetricsSingleton();
