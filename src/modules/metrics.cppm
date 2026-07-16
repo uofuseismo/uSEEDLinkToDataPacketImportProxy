@@ -420,7 +420,7 @@ public:
         int64_t endTimeMicroSeconds
             = startTimeMicroSeconds 
             + std::max(0, (nSamples - 1))
-             *static_cast<int64_t> (samplingPeriod*1000000);
+             *static_cast<int64_t> (std::round(samplingPeriod*1000000));
         //auto endTime
         //    = gutil::TimeUtil::MicrosecondsToTimestamp(endTimeMicroSeconds);
 
