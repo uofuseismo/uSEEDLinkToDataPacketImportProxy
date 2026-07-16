@@ -25,7 +25,7 @@ class uSEEDLinkToDataPacketImportProxy(ConanFile):
 
    def requirements(self):
        # dependencies
-       self.requires("grpc/1.78.1")
+       self.requires("grpc/1.82.0")
        self.requires("opentelemetry-cpp/1.26.0")
        self.requires("protobuf/6.33.5")
        self.requires("spdlog/1.17.0")
@@ -34,7 +34,7 @@ class uSEEDLinkToDataPacketImportProxy(ConanFile):
 
    def build_requirements(self):
        # test dependncies and build tools
-       self.test_requires("catch2/3.13.0")
+       self.test_requires("catch2/3.15.2")
 
    def layout(self):
        # defines the project layout

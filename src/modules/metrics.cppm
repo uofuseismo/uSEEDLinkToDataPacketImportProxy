@@ -1,5 +1,5 @@
 module;
-
+#include <iostream>
 #include <mutex>
 #include <atomic>
 #include <string>
@@ -407,19 +407,22 @@ public:
         }
         auto samplingPeriod = 1./samplingRate;
 
+        if (!packet.has_start_time())
+        {
+            throw std::invalid_argument("Start time not set");
+        }
         // I really don't need an absurd amount of resolution and would
         // rather be resistant to overflow so microseconds are fine.
         namespace gutil = google::protobuf::util;
         auto startTime = packet.start_time();
         auto startTimeMicroSeconds
             = gutil::TimeUtil::TimestampToMicroseconds(startTime);
-        auto endTime = startTime;
-        auto endTimeNanoSeconds
-            = endTime.nanos()
-            + std::max(0, (nSamples - 1))*samplingPeriod*1000000000;
-        endTime.set_nanos(endTimeNanoSeconds);
-        auto endTimeMicroSeconds
-            = gutil::TimeUtil::TimestampToMicroseconds(endTime);
+        int64_t endTimeMicroSeconds
+            = startTimeMicroSeconds 
+            + std::max(0, (nSamples - 1))
+             *static_cast<int64_t> (samplingPeriod*1000000);
+        //auto endTime
+        //    = gutil::TimeUtil::MicrosecondsToTimestamp(endTimeMicroSeconds);
 
         auto now 
             = std::chrono::duration_cast<std::chrono::microseconds>

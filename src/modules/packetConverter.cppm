@@ -1,5 +1,4 @@
 module;
-
 #include <string>
 #include <array>
 #include <bit>

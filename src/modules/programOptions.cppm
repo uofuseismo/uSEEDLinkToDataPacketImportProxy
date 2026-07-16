@@ -536,7 +536,6 @@ ProgramOptions parseIniFile(const std::filesystem::path &iniFile)
 #ifndef WITH_OTLP_GRPC
         throw std::runtime_error(
             "Recompile with Conan to use gRPC metrics exporter option");
-blow up
 #endif
         OTelGRPCMetricsOptions metricsOptions;
         metricsOptions.url
