@@ -162,14 +162,8 @@ jobs:
           ctest --preset conan-release --verbose
   package:
     needs: test
-    runs-on: ${{ matrix.distro }}
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [ubuntu-26.04]
-        arch: [x86]
-        BUILD_TARGET: [Release]
-    name: Package for ${{ matrix.distro }} ${{ matrix.arch }}
+    runs-on: ubuntu-26.04
+    name: Package and ship Ubuntu26 container to quay
 
     steps:
       - uses: actions/checkout@v6
