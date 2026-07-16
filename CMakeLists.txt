@@ -5,7 +5,7 @@ enable_testing()
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 option(BUILD_CONTAINER "Build the deploy container" ON)
 option(BUILD_TESTS "Compile unit tests" ON)
-option(WITH_CONAN "Deals with wonkiness with the OTel libraries and Conan" OFF)
+option(WITH_CONAN "Deals with wonkiness with the OTel libraries and Conan" ON)
 
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
