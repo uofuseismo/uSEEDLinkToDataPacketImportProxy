@@ -76,7 +76,7 @@ jobs:
              ${HOME}/third-party/lib/cmake/libmseed/*
              ${HOME}/third-party/lib/libmseed.a
              ${HOME}/third-party/lib/libslink.a
-          key: ${{ matrix.distro }}-${{ matrix.arch }}-build-${{ env.cache-name }}
+          key: ${{ matrix.distro }}-${{ matrix.arch }}-build-${{ env.cache-name }}-${{ hashFiles('${HOME}/third-party') }}$
 
       - if: ${{ steps.cache-libmseed-libslink.outputs.cache-hit == 'true' }}
         name: Show existing libmseed and libslink
