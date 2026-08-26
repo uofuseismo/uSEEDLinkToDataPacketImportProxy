@@ -431,14 +431,12 @@ public:
             mLastPrintSummary = now;
             auto nReceived = metrics.getReceivedPacketsCount();
             auto nSent = metrics.getSentPacketsCount();
-            auto tempPacketsReceived = nReceived;
-            auto tempPacketsSent = nSent;
-            mReportNumberOfPacketsReceived = nReceived;
-            mReportNumberOfPacketsSent = nSent;
             SPDLOG_LOGGER_INFO(mLogger,
                 "Imported {} packets and sent {} packets since last report.",
-                tempPacketsReceived,
-                tempPacketsSent);
+                nReceived - mReportNumberOfPacketsReceived,
+                nSent - mReportNumberOfPacketsSent);
+            mReportNumberOfPacketsReceived = nReceived;
+            mReportNumberOfPacketsSent = nSent;
         }
     } 
 

@@ -6,15 +6,16 @@ runs:
     - name: Prepare environment
       run: |
         mkdir -p ${{github.workspace}}/build
-        sudo apt-get update
-        sudo apt-get install -y tar
-        sudo apt-get install -y wget
-        sudo apt-get install -y cmake
-        sudo apt-get install -y buildah
-        sudo apt-get install -y ninja-build
-        sudo apt-get install -y clang
-        sudo apt-get install -y clang-tidy
-        sudo apt-get install -y pkg-config
-        sudo apt-get install -y build-essential
+        sudo apt-get update -y
+        sudo apt-get install -y --no-install-recommends \
+           tar \
+           wget \
+           cmake \
+           buildah \
+           ninja-build \
+           clang \
+           clang-tidy \
+           pkg-config \
+           build-essential
       shell: bash
 
